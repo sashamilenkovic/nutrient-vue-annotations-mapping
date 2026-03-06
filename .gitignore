@@ -1,0 +1,30 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+node_modules
+.DS_Store
+dist
+dist-ssr
+coverage
+*.local
+
+# Environment
+.env
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.sw?
+
+*.tsbuildinfo
+.eslintcache
+
+# Vite
+*.timestamp-*-*.mjs
+
+# SDK assets (copied from node_modules at build time)
+nutrient-viewer-lib/

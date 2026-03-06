@@ -1,0 +1,59 @@
+# Nutrient Document Engine + PostgreSQL
+# Run: docker compose up -d
+# Dashboard: http://localhost:5000/dashboard
+
+services:
+  db:
+    image: postgres:16
+    container_name: annotations-demo-postgres
+    environment:
+      POSTGRES_USER: db-user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: document-engine
+      POSTGRES_INITDB_ARGS: --data-checksums
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U db-user -d document-engine']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  document-engine:
+    image: pspdfkit/document-engine:latest
+    container_name: annotations-demo-document-engine
+    ports:
+      - '5050:5000'
+    environment:
+      PGUSER: db-user
+      PGPASSWORD: password
+      PGDATABASE: document-engine
+      PGHOST: db
+      PGPORT: 5432
+      API_AUTH_TOKEN: ${DE_API_AUTH_TOKEN:-secret}
+      SECRET_KEY_BASE: ${DE_SECRET_KEY_BASE:-secret-key-base}
+      JWT_PUBLIC_KEY: ${DE_JWT_PUBLIC_KEY:-}
+      JWT_ALGORITHM: RS256
+      DASHBOARD_USERNAME: ${DE_DASHBOARD_USERNAME:-dashboard}
+      DASHBOARD_PASSWORD: ${DE_DASHBOARD_PASSWORD:-secret}
+      ACTIVATION_KEY: ${DE_ACTIVATION_KEY:-}
+      PDF_GENERATION_LINEARIZE: 'true'
+      ENABLE_OFFICE_CONVERSION: 'true'
+      LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/api/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    driver: local
