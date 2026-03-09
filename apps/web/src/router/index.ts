@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AnnotationMappingPage from '@/pages/AnnotationMappingPage.vue'
 import TextComparisonPage from '@/pages/TextComparisonPage.vue'
 import CrossPageComparisonPage from '@/pages/CrossPageComparisonPage.vue'
+import AdvancedComparisonPage from '@/pages/AdvancedComparisonPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -20,6 +21,11 @@ const router = createRouter({
       path: '/cross-page-comparison',
       name: 'cross-page-comparison',
       component: CrossPageComparisonPage,
+    },
+    {
+      path: '/advanced-comparison',
+      name: 'advanced-comparison',
+      component: AdvancedComparisonPage,
     },
   ],
 })

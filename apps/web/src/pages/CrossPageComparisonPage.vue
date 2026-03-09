@@ -75,13 +75,42 @@ const stats = computed(() => {
 
 // --- Text extraction ---
 async function extractText(file: File, label: string): Promise<string> {
+  const SDK = await getNutrientViewer()
+  let buffer = await file.arrayBuffer()
+  const isDocx = file.name.toLowerCase().endsWith('.docx')
+  console.log(`[extractText] ${label}: file=${file.name}, bufferSize=${buffer.byteLength}, isDocx=${isDocx}`)
+
+  // .docx: textLinesForPageIndex hangs in headless mode,
+  // so convert to PDF first, then extract text from the PDF.
+  if (isDocx) {
+    extractionProgress.value = `${label}: converting .docx to PDF...`
+    const convertContainer = document.createElement('div')
+    convertContainer.style.display = 'none'
+    document.body.appendChild(convertContainer)
+    try {
+      const loadConfig = {
+        container: convertContainer,
+        document: buffer,
+        baseUrl,
+        headless: true,
+      }
+      console.log(`[extractText] ${label}: SDK.load config keys:`, Object.keys(loadConfig), 'buffer size:', buffer.byteLength)
+      const convertInstance = await SDK.load(loadConfig)
+      const pdfBuffer = await convertInstance.exportPDF()
+      await SDK.unload(convertContainer)
+      buffer = pdfBuffer.buffer as ArrayBuffer
+    } finally {
+      if (document.body.contains(convertContainer)) {
+        document.body.removeChild(convertContainer)
+      }
+    }
+  }
+
   const container = document.createElement('div')
   container.style.display = 'none'
   document.body.appendChild(container)
 
   try {
-    const SDK = await getNutrientViewer()
-    const buffer = await file.arrayBuffer()
     extractionProgress.value = `Loading ${label}...`
 
     const instance = await SDK.load({

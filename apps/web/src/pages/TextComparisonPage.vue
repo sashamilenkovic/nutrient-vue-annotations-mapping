@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { getNutrientViewer, baseUrl } from '@/nutrient'
 
 const containerEl = ref<HTMLElement | null>(null)
@@ -10,8 +10,21 @@ const error = ref<string>('')
 
 const docAFile = ref<File | null>(null)
 const docBFile = ref<File | null>(null)
-const docAName = ref('(select Document A)')
-const docBName = ref('(select Document B)')
+const docAName = ref('LeaseContract.docx')
+const docBName = ref('LeaseContract3.docx')
+const docABuffer = ref<ArrayBuffer | null>(null)
+const docBBuffer = ref<ArrayBuffer | null>(null)
+
+// Auto-load default documents
+async function loadDefaults() {
+  const [respA, respB] = await Promise.all([
+    fetch('/documents/LeaseContract.docx'),
+    fetch('/documents/LeaseContract3.docx'),
+  ])
+  docABuffer.value = await respA.arrayBuffer()
+  docBBuffer.value = await respB.arrayBuffer()
+  loadComparison()
+}
 
 function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
   return file.arrayBuffer()
@@ -19,7 +32,10 @@ function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
 
 async function loadComparison() {
   if (!containerEl.value) return
-  if (!docAFile.value || !docBFile.value) {
+
+  const bufA = docABuffer.value
+  const bufB = docBBuffer.value
+  if (!bufA || !bufB) {
     error.value = 'Please select both Document A and Document B'
     return
   }
@@ -37,19 +53,21 @@ async function loadComparison() {
       // No previous instance
     }
 
-    const [bufferA, bufferB] = await Promise.all([
-      fileToArrayBuffer(docAFile.value),
-      fileToArrayBuffer(docBFile.value),
-    ])
+    const bufferA = bufA.slice(0)
+    const bufferB = bufB.slice(0)
 
-    await SDK.loadTextComparison({
+    const tcConfig = {
       container: containerEl.value,
       documentA: bufferA,
       documentB: bufferB,
       wordLevel: wordLevel.value,
       baseUrl,
       toolbarItems: SDK.defaultTextComparisonToolbarItems,
-    })
+    }
+    console.log('[TC-DEBUG-VUE] wordLevel.value:', wordLevel.value)
+    console.log('[TC-DEBUG-VUE] tcConfig.wordLevel:', tcConfig.wordLevel)
+    console.log('[TC-DEBUG-VUE] full config keys:', Object.keys(tcConfig))
+    await SDK.loadTextComparison(tcConfig)
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -62,6 +80,7 @@ function onDocAChange(event: Event) {
   if (file) {
     docAFile.value = file
     docAName.value = file.name
+    file.arrayBuffer().then(buf => { docABuffer.value = buf })
   }
 }
 
@@ -70,6 +89,7 @@ function onDocBChange(event: Event) {
   if (file) {
     docBFile.value = file
     docBName.value = file.name
+    file.arrayBuffer().then(buf => { docBBuffer.value = buf })
   }
 }
 
@@ -84,12 +104,16 @@ async function toggleWordLevel() {
   }
   wordLevel.value = !wordLevel.value
   containerKey.value++
-  if (docAFile.value && docBFile.value) {
+  if (docABuffer.value && docBBuffer.value) {
     // Wait for Vue to recreate the container with the new key
     await nextTick()
     loadComparison()
   }
 }
+
+onMounted(() => {
+  loadDefaults()
+})
 
 onUnmounted(async () => {
   if (containerEl.value) {
@@ -110,7 +134,7 @@ onUnmounted(async () => {
         <label class="file-label">
           <span class="file-btn">Document A</span>
           <span class="file-name">{{ docAName }}</span>
-          <input type="file" accept=".pdf" hidden @change="onDocAChange">
+          <input type="file" accept=".pdf,.docx" hidden @change="onDocAChange">
         </label>
       </div>
 
@@ -118,7 +142,7 @@ onUnmounted(async () => {
         <label class="file-label">
           <span class="file-btn">Document B</span>
           <span class="file-name">{{ docBName }}</span>
-          <input type="file" accept=".pdf" hidden @change="onDocBChange">
+          <input type="file" accept=".pdf,.docx" hidden @change="onDocBChange">
         </label>
       </div>
 
@@ -140,7 +164,7 @@ onUnmounted(async () => {
     <div v-if="error" class="error-bar">{{ error }}</div>
 
     <div class="viewer-area">
-      <div v-if="!docAFile || !docBFile" class="viewer-placeholder">
+      <div v-if="!docABuffer && !docBBuffer" class="viewer-placeholder">
         <p>Select two PDF documents to compare</p>
         <p class="hint">Uses NutrientViewer.loadTextComparison() — standalone mode, no server required</p>
       </div>

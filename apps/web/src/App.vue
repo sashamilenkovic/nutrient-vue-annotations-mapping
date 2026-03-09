@@ -27,6 +27,12 @@ const route = useRoute()
         >
           Cross-Page Comparison
         </RouterLink>
+        <RouterLink
+          to="/advanced-comparison"
+          :class="{ active: route.name === 'advanced-comparison' }"
+        >
+          Advanced Comparison
+        </RouterLink>
       </nav>
     </header>
     <main class="main-content">
