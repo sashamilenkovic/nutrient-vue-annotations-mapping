@@ -40,7 +40,9 @@ async function onViewerLoaded(inst: Instance) {
     return defaultAnnotationToolbarItems
   })
 
-  // Force openArrow end cap on both line and arrow presets
+  // Force openArrow end cap on line/arrow presets,
+  // and set rectangle preset to matching stroke/fill + opacity (marker overlay)
+  const markerColor = new SDK.Color({ r: 255, g: 235, b: 59 }) // yellow
   inst.setAnnotationPresets((presets) => ({
     ...presets,
     line: {
@@ -50,6 +52,12 @@ async function onViewerLoaded(inst: Instance) {
     arrow: {
       ...presets.arrow,
       lineCaps: { start: null, end: 'openArrow' },
+    },
+    rectangle: {
+      ...presets.rectangle,
+      strokeColor: markerColor,
+      fillColor: markerColor,
+      opacity: 0.3,
     },
   }))
 
@@ -315,6 +323,7 @@ async function demoRectangle() {
     return defaultAnnotationToolbarItems
   })
 
+  inst.setCurrentAnnotationPreset('rectangle')
   inst.setViewState((vs) => vs.set('interactionMode', SDK.InteractionMode.SHAPE_RECTANGLE))
   showStatus('Rectangle tool activated — toolbar: fill-color, opacity, delete')
 }

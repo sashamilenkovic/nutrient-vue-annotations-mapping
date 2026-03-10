@@ -17,6 +17,11 @@ Notes on each demo section, what the customer asked, and what to show.
 
 **DB proof:** `records` table → `content` column → `"type": "pspdfkit/markup/redaction"`, `"rects": [[78.82, 48.01, 295.27, 58.37]]`
 
+**Implementation:**
+- Buttons call `setInteractionMode('REDACT_SHAPE_RECTANGLE')` / `setInteractionMode('REDACT_TEXT_HIGHLIGHTER')` which sets the viewer's `interactionMode` via `inst.setViewState()`
+- No toolbar customization needed — the built-in redaction tools work as-is
+- Area redaction always produces a single rect in the `rects` array (the customer's concern about multi-rect was unfounded for this annotation type)
+
 ---
 
 ## 2. Stamps
@@ -38,6 +43,12 @@ Notes on each demo section, what the customer asked, and what to show.
 4. Open Stamp Picker → place the custom stamp on the document
 5. Check DB → `records.content` has `pspdfkit/image` with `imageAttachmentId`
 
+**Implementation:**
+- **Built-in stamps:** `setInteractionMode('STAMP_PICKER')` opens the native stamp picker UI
+- **Image stamps:** User picks a file → `inst.createAttachment(file)` uploads it and returns an `attachmentId` → a new `SDK.Annotations.ImageAnnotation` is created with that `imageAttachmentId` → registered via `inst.setStampAnnotationTemplates()` which pushes it into the picker
+- **Custom text stamps:** `renderTextToBlob()` draws text onto a `<canvas>` at 3x scale (for high-DPI), with configurable font, size, color, and optional image alongside. Canvas is converted to PNG blob → uploaded as attachment → registered as `ImageAnnotation` same as above
+- Both image and text stamps serialize as `pspdfkit/image` (not `pspdfkit/stamp`) — Doxis mapping layer needs to handle both types
+
 ---
 
 ## 3. Arrow
@@ -52,6 +63,14 @@ Notes on each demo section, what the customer asked, and what to show.
 3. Toolbar only shows delete — all other controls (stroke-color, line-width, line caps, dash array) are hidden via `annotationToolbarItems`
 4. Check DB → `records.content` has `"lineCaps": { "start": null, "end": "openArrow" }`
 
+**Implementation (three layers of restriction):**
+1. **`SDK.Options.LINE_CAP_PRESETS = ['openArrow']`** — set via `beforeLoad` callback *before* `SDK.load()` (Options is frozen after load). This removes all other cap options (including "none") from any line cap picker in the UI.
+2. **`inst.setAnnotationPresets()`** — forces `lineCaps: { start: null, end: 'openArrow' }` on both `line` and `arrow` presets, so every new line annotation defaults to openArrow.
+3. **`inst.setToolbarItems()`** — removes the `line` type from the main toolbar (keeps `arrow`), so users can't create a plain line.
+4. **`inst.setAnnotationToolbarItems()`** — for `LineAnnotation`, filters the secondary toolbar to only show `delete`. All other controls (stroke-color, line-width, line caps, dash array) are hidden.
+
+All of this is configured once in `onViewerLoaded()` and `restrictLineCaps()` — no per-click setup needed.
+
 ---
 
 ## 4. Ink (Line Overlay)
@@ -65,18 +84,29 @@ Notes on each demo section, what the customer asked, and what to show.
 2. Toolbar is restricted to stroke-color, line-width, delete
 3. Check DB → `records.content` has `bbox`, `lines.points`, `strokeColor`, `lineWidth` — all stored automatically
 
+**Implementation:**
+- Button sets `interactionMode` to `SDK.InteractionMode.INK`
+- `inst.setAnnotationToolbarItems()` checks `annotation instanceof SDK.Annotations.InkAnnotation` and filters to only `['stroke-color', 'line-width', 'delete', 'spacer']`
+- The `bbox` field in the DB is computed automatically by the SDK from the drawn points — Doxis does not need to reconstruct it
+
 ---
 
 ## 5. Marker (Rectangle Overlay)
 
-**Question:** Want to use `pspdfkit/shape/rectangle` instead of `pspdfkit/markup/highlight` because highlight stores multiple rects from text selection.
+**Question:** Want to use `pspdfkit/shape/rectangle` instead of `pspdfkit/markup/highlight` because highlight stores multiple rects from text selection. Border and fill color should be the same, with transparency.
 
-**Answer:** Yes, `pspdfkit/shape/rectangle` uses a single `boundingBox` — no multi-rect problem. Set same fill/stroke color + opacity for highlight-like appearance.
+**Answer:** Yes, `pspdfkit/shape/rectangle` uses a single `boundingBox` — no multi-rect problem. Rectangle preset is configured with matching `strokeColor`/`fillColor` + `opacity: 0.3` to create a translucent marker overlay effect.
 
 **Demo flow:**
-1. Click "Rectangle Tool" → draw a rectangle
-2. Check DB → `records.content` has single `boundingBox` (not multiple `rects`)
-3. Compare with highlight which would have `rects: [...]` array
+1. Click "Rectangle Tool" → draw a rectangle — appears as a translucent yellow overlay
+2. Text underneath remains visible through the opacity
+3. Check DB → `records.content` has single `boundingBox` (not multiple `rects`), matching `strokeColor`/`fillColor`, and `opacity`
+
+**Implementation:**
+- `inst.setAnnotationPresets()` sets the `rectangle` preset with matching `strokeColor` and `fillColor` (yellow) + `opacity: 0.3`, so every new rectangle looks like a marker overlay
+- `inst.setCurrentAnnotationPreset('rectangle')` ensures the preset is active when the tool is activated
+- `inst.setAnnotationToolbarItems()` checks `annotation instanceof SDK.Annotations.RectangleAnnotation` and filters to only `['fill-color', 'opacity', 'delete', 'spacer']` — stroke-color is hidden since it should always match fill
+- Stores as `pspdfkit/shape/rectangle` with a single `boundingBox` — unlike `pspdfkit/markup/highlight` which uses a `rects` array (one rect per text line selected)
 
 ---
 
@@ -89,6 +119,12 @@ Notes on each demo section, what the customer asked, and what to show.
 **Demo flow:**
 1. Click "Create with Custom Data" → programmatically creates annotation with `customData: { CreatedBy, ModifiedBy }`
 2. Check DB → `records.content` has `customData` and `creatorName`
+
+**Implementation:**
+- `createAnnotationWithCustomData()` in `useAnnotations.ts` creates a `RectangleAnnotation` programmatically (no drawing tool)
+- Passes `customData: { CreatedBy: 'Jane Smith', ModifiedBy: 'John Doe', department: 'Legal' }` and `creatorName: 'Jane Smith'` directly to the annotation constructor
+- Both fields are first-class in Instant JSON — `customData` is an arbitrary JSON object, `creatorName` is a top-level string field
+- Document Engine persists both in the `records.content` JSONB column without any extra configuration
 
 ---
 
