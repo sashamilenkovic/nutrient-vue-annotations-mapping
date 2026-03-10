@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { Instance } from '@nutrient-sdk/viewer'
 import type NutrientViewer from '@nutrient-sdk/viewer'
 import { getNutrientViewer } from '@/nutrient'
@@ -7,8 +8,11 @@ import DocumentViewer from '@/components/DocumentViewer.vue'
 import AnnotationDemo from '@/components/AnnotationDemo.vue'
 import { useAnnotations } from '@/composables/useAnnotations'
 
+const route = useRoute()
+const router = useRouter()
+
 const instance = ref<Instance | null>(null)
-const documentId = ref<string>('')
+const documentId = ref<string>((route.query.documentId as string) || '')
 const jsonOutput = ref<string>('')
 const statusMessage = ref<string>('')
 
@@ -17,8 +21,18 @@ const {
   exportInstantJSON,
 } = useAnnotations(instance)
 
+// Sync documentId to URL query params
+watch(documentId, (id) => {
+  const query = id ? { documentId: id } : {}
+  router.replace({ query })
+})
+
 function restrictLineCaps(SDK: typeof NutrientViewer) {
-  SDK.Options.LINE_CAP_PRESETS = ['openArrow']
+  try {
+    SDK.Options.LINE_CAP_PRESETS = ['openArrow']
+  } catch {
+    // Options is frozen after first SDK.load() — already set
+  }
 }
 
 async function onViewerLoaded(inst: Instance) {

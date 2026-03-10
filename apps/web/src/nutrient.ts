@@ -11,4 +11,3 @@ export async function getNutrientViewer(): Promise<typeof NutrientViewerType> {
 
 export const baseUrl = `${window.location.protocol}//${window.location.host}/`
 export const licenseKey = import.meta.env.VITE_LICENSE_KEY as string | undefined
-console.log('[nutrient] licenseKey loaded:', licenseKey ? `${licenseKey.substring(0, 20)}...` : 'undefined')

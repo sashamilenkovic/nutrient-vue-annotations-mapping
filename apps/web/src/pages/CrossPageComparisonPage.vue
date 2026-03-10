@@ -78,7 +78,7 @@ async function extractText(file: File, label: string): Promise<string> {
   const SDK = await getNutrientViewer()
   let buffer = await file.arrayBuffer()
   const isDocx = file.name.toLowerCase().endsWith('.docx')
-  console.log(`[extractText] ${label}: file=${file.name}, bufferSize=${buffer.byteLength}, isDocx=${isDocx}`)
+
 
   // .docx: textLinesForPageIndex hangs in headless mode,
   // so convert to PDF first, then extract text from the PDF.
@@ -95,7 +95,6 @@ async function extractText(file: File, label: string): Promise<string> {
         licenseKey,
         headless: true,
       }
-      console.log(`[extractText] ${label}: SDK.load config keys:`, Object.keys(loadConfig), 'buffer size:', buffer.byteLength)
       const convertInstance = await SDK.load(loadConfig)
       const pdfBuffer = await convertInstance.exportPDF()
       await SDK.unload(convertContainer)

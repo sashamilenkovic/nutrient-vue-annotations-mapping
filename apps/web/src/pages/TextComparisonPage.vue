@@ -106,10 +106,11 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
-  if (containerEl.value) {
+  const container = containerEl.value
+  if (container) {
     try {
       const SDK = await getNutrientViewer()
-      SDK.unload(containerEl.value)
+      SDK.unload(container)
     } catch {
       // ignore
     }

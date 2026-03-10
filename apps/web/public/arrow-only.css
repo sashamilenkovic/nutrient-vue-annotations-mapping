@@ -1,7 +1,0 @@
-/* Hide start line cap picker and dash array picker from the annotation toolbar.
-   Only the end line cap (arrow) remains visible. */
-.PSPDFKit-Annotation-Toolbar-StartLineCap,
-.PSPDFKit-Annotation-Toolbar-DashArray,
-.PSPDFKit-Toolbox-LineCaps-DashArray > div:first-child {
-  display: none !important;
-}

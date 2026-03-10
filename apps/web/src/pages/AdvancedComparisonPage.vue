@@ -71,10 +71,13 @@ onUnmounted(async () => {
 })
 
 async function cleanup() {
+  // Capture refs synchronously before any await — Vue nulls template refs during unmount
+  const elA = containerA.value
+  const elB = containerB.value
   try {
     if (!SDK) SDK = await getNutrientViewer()
-    if (instA && containerA.value) { SDK.unload(containerA.value); instA = null }
-    if (instB && containerB.value) { SDK.unload(containerB.value); instB = null }
+    if (instA && elA) { SDK.unload(elA); instA = null }
+    if (instB && elB) { SDK.unload(elB); instB = null }
   } catch { /* ignore */ }
 }
 
@@ -479,16 +482,7 @@ async function createHighlights(
       try {
         const ranges = info.useSubRects ? rangesMap.get(idx) : undefined
         const rects = computeRects(line, ranges)
-        if (rects.length === 0) continue // Skip — sub-rect too narrow for reliable highlighting
-
-        // Debug: log highlight details
-        if (info.useSubRects && ranges) {
-          console.log(`  [HIGHLIGHT ${docLabel}] line ${idx} sub-rects: text="${line.contents.slice(0, 50)}" ranges=${JSON.stringify(ranges.map(r => ({s: r.fracStart.toFixed(3), e: r.fracEnd.toFixed(3)})))} lineRect={l:${line.rect.left.toFixed(1)}, w:${line.rect.width.toFixed(1)}} → ${rects.length} rect(s)`)
-        }
-        // Log bounding boxes for moved lines to diagnose coverage
-        if (!info.useSubRects) {
-          console.log(`  [HIGHLIGHT ${docLabel}] line ${idx} full: text="${line.contents.slice(0, 40)}" bbox={l:${line.rect.left.toFixed(1)}, t:${line.rect.top.toFixed(1)}, w:${line.rect.width.toFixed(1)}, h:${line.rect.height.toFixed(1)}} → final w:${rects[0]!.width.toFixed(1)}`)
-        }
+        if (rects.length === 0) continue
 
         const sdkRects = rects.map(r => new SDK!.Geometry.Rect(r))
         const bbox = {
@@ -508,17 +502,9 @@ async function createHighlights(
           isEditable: false,
         })
         await inst.create(annotation)
-      } catch (e) {
-        console.warn('Annotation failed:', e)
+      } catch {
+        // ignore annotation failures
       }
-    }
-  }
-
-  // Log highlight plan for moved groups
-  for (const g of groups) {
-    if (g.type === 'moved') {
-      const uniqueB = [...new Set(g.linesB)]
-      console.log(`  [HIGHLIGHT moved] Doc B lines: ${uniqueB.map(i => `${i}:"${linesB[i]?.contents.slice(0, 40)}"`).join(', ')}`)
     }
   }
 
@@ -683,26 +669,8 @@ async function runComparison() {
     await createHighlights(groups, linesA, linesB, changedRangesA, changedRangesB)
 
     hasResults.value = true
-
-    // Log detailed diff results
-    console.log('=== Advanced Comparison Results ===')
-    console.log(`Lines extracted: Doc A = ${linesA.length}, Doc B = ${linesB.length}`)
-    console.log(`Words: Doc A = ${wordsA.length}, Doc B = ${wordsB.length}`)
-    console.log(`Raw word diffs: ${rawDiffs.length} entries (${rawDiffs.filter(d => d.type === 'equal').length} equal, ${rawDiffs.filter(d => d.type === 'delete').length} delete, ${rawDiffs.filter(d => d.type === 'insert').length} insert)`)
-    console.log(`Change groups: ${groups.length} total`)
-    groups.forEach((g, i) => {
-      const pagesInfo = [
-        g.pageA != null ? `docA p${g.pageA + 1}` : null,
-        g.pageB != null ? `docB p${g.pageB + 1}` : null,
-      ].filter(Boolean).join(', ')
-      const linesInfo = `linesA=[${g.linesA.join(',')}] linesB=[${g.linesB.join(',')}]`
-      console.log(`  ${i + 1}. [${g.type.toUpperCase()}] ${pagesInfo} | ${linesInfo} | "${g.preview}"`)
-      if (g.moveId != null) console.log(`     moveId=${g.moveId}`)
-    })
-    console.log('==================================')
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
-    console.error('Comparison failed:', err)
   } finally {
     isLoading.value = false
     progress.value = ''

@@ -75,15 +75,16 @@ export function useNutrientViewer(
   }
 
   async function unload() {
-    if (containerRef.value) {
+    const container = containerRef.value
+    if (container) {
+      instance.value = null
+      containerRef.value = null
       try {
         const SDK = await getNutrientViewer()
-        SDK.unload(containerRef.value)
+        SDK.unload(container)
       } catch {
         // Ignore unload errors
       }
-      instance.value = null
-      containerRef.value = null
     }
   }
 
