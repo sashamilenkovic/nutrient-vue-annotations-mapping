@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { getNutrientViewer, baseUrl } from '@/nutrient'
+import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 import type NutrientViewerType from '@nutrient-sdk/viewer'
 
 // --- Types ---
@@ -63,6 +63,7 @@ const stats = computed(() => {
 // --- Lifecycle ---
 onMounted(async () => {
   await loadDefaultDocuments()
+  runComparison()
 })
 
 onUnmounted(async () => {
@@ -79,14 +80,14 @@ async function cleanup() {
 
 async function loadDefaultDocuments() {
   const [resA, resB] = await Promise.all([
-    fetch('/documents/LeaseContract.pdf'),
-    fetch('/documents/LeaseContract3.pdf'),
+    fetch('/documents/LeaseContract.docx'),
+    fetch('/documents/LeaseContract3.docx'),
   ])
   const [blobA, blobB] = await Promise.all([resA.blob(), resB.blob()])
-  docAFile.value = new File([blobA], 'LeaseContract.pdf', { type: 'application/pdf' })
-  docBFile.value = new File([blobB], 'LeaseContract3.pdf', { type: 'application/pdf' })
-  docAName.value = 'LeaseContract.pdf'
-  docBName.value = 'LeaseContract3.pdf'
+  docAFile.value = new File([blobA], 'LeaseContract.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+  docBFile.value = new File([blobB], 'LeaseContract3.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+  docAName.value = 'LeaseContract.docx'
+  docBName.value = 'LeaseContract3.docx'
 }
 
 function onDocAChange(event: Event) {
@@ -569,6 +570,7 @@ async function runComparison() {
       container: containerA.value!,
       document: bufA,
       baseUrl,
+      licenseKey,
       toolbarItems: [],
     })
 
@@ -576,6 +578,7 @@ async function runComparison() {
       container: containerB.value!,
       document: bufB,
       baseUrl,
+      licenseKey,
       toolbarItems: [],
     })
 

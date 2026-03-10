@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
-import { getNutrientViewer, baseUrl } from '@/nutrient'
+import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 
 // --- Types ---
 interface DiffResult {
@@ -92,6 +92,7 @@ async function extractText(file: File, label: string): Promise<string> {
         container: convertContainer,
         document: buffer,
         baseUrl,
+        licenseKey,
         headless: true,
       }
       console.log(`[extractText] ${label}: SDK.load config keys:`, Object.keys(loadConfig), 'buffer size:', buffer.byteLength)
@@ -117,6 +118,7 @@ async function extractText(file: File, label: string): Promise<string> {
       container,
       document: buffer,
       baseUrl,
+      licenseKey,
       headless: true,
     })
 

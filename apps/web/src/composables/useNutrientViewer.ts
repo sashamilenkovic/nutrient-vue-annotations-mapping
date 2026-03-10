@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import type { Instance } from '@nutrient-sdk/viewer'
-import { getNutrientViewer, baseUrl } from '@/nutrient'
+import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 
 export function useNutrientViewer(
   options: {
@@ -54,6 +54,7 @@ export function useNutrientViewer(
         container,
         serverUrl,
         baseUrl,
+        licenseKey,
         theme: SDK.Theme[theme],
         documentId,
         authPayload: { jwt },

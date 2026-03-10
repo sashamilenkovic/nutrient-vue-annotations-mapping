@@ -17,6 +17,7 @@ const sdkAssetsDest = path.resolve(__dirname, 'public/nutrient-viewer-lib')
 cpSync(sdkAssetsSrc, sdkAssetsDest, { recursive: true, force: true })
 
 export default defineConfig({
+  envDir: path.resolve(__dirname, '../..'),
   plugins: [vue()],
   resolve: {
     alias: {

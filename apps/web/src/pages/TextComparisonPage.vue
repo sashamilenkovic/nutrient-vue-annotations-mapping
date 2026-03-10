@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
-import { getNutrientViewer, baseUrl } from '@/nutrient'
+import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 
 const containerEl = ref<HTMLElement | null>(null)
 const wordLevel = ref(true)
@@ -8,8 +8,6 @@ const containerKey = ref(0)
 const isLoading = ref(false)
 const error = ref<string>('')
 
-const docAFile = ref<File | null>(null)
-const docBFile = ref<File | null>(null)
 const docAName = ref('LeaseContract.docx')
 const docBName = ref('LeaseContract3.docx')
 const docABuffer = ref<ArrayBuffer | null>(null)
@@ -23,11 +21,8 @@ async function loadDefaults() {
   ])
   docABuffer.value = await respA.arrayBuffer()
   docBBuffer.value = await respB.arrayBuffer()
-  loadComparison()
-}
-
-function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return file.arrayBuffer()
+  docAName.value = 'LeaseContract.docx'
+  docBName.value = 'LeaseContract3.docx'
 }
 
 async function loadComparison() {
@@ -56,18 +51,15 @@ async function loadComparison() {
     const bufferA = bufA.slice(0)
     const bufferB = bufB.slice(0)
 
-    const tcConfig = {
+    await SDK.loadTextComparison({
       container: containerEl.value,
       documentA: bufferA,
       documentB: bufferB,
       wordLevel: wordLevel.value,
       baseUrl,
+      licenseKey,
       toolbarItems: SDK.defaultTextComparisonToolbarItems,
-    }
-    console.log('[TC-DEBUG-VUE] wordLevel.value:', wordLevel.value)
-    console.log('[TC-DEBUG-VUE] tcConfig.wordLevel:', tcConfig.wordLevel)
-    console.log('[TC-DEBUG-VUE] full config keys:', Object.keys(tcConfig))
-    await SDK.loadTextComparison(tcConfig)
+    })
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -78,7 +70,6 @@ async function loadComparison() {
 function onDocAChange(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (file) {
-    docAFile.value = file
     docAName.value = file.name
     file.arrayBuffer().then(buf => { docABuffer.value = buf })
   }
@@ -87,7 +78,6 @@ function onDocAChange(event: Event) {
 function onDocBChange(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (file) {
-    docBFile.value = file
     docBName.value = file.name
     file.arrayBuffer().then(buf => { docBBuffer.value = buf })
   }
@@ -105,14 +95,14 @@ async function toggleWordLevel() {
   wordLevel.value = !wordLevel.value
   containerKey.value++
   if (docABuffer.value && docBBuffer.value) {
-    // Wait for Vue to recreate the container with the new key
     await nextTick()
     loadComparison()
   }
 }
 
-onMounted(() => {
-  loadDefaults()
+onMounted(async () => {
+  await loadDefaults()
+  loadComparison()
 })
 
 onUnmounted(async () => {
@@ -165,7 +155,7 @@ onUnmounted(async () => {
 
     <div class="viewer-area">
       <div v-if="!docABuffer && !docBBuffer" class="viewer-placeholder">
-        <p>Select two PDF documents to compare</p>
+        <p>Select two documents to compare</p>
         <p class="hint">Uses NutrientViewer.loadTextComparison() — standalone mode, no server required</p>
       </div>
       <div ref="containerEl" :key="containerKey" class="viewer-container" />
