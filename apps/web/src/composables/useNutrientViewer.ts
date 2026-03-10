@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import type { Instance } from '@nutrient-sdk/viewer'
+import type NutrientViewer from '@nutrient-sdk/viewer'
 import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 
 export function useNutrientViewer(
@@ -7,6 +8,7 @@ export function useNutrientViewer(
     serverUrl?: string
     theme?: 'LIGHT' | 'DARK'
     jwtEndpoint?: string
+    beforeLoad?: (SDK: typeof NutrientViewer) => void
   } = {},
 ) {
   const instance = ref<Instance | null>(null)
@@ -49,6 +51,10 @@ export function useNutrientViewer(
     try {
       const jwt = await fetchJWT(documentId)
       const SDK = await getNutrientViewer()
+
+      if (options.beforeLoad) {
+        options.beforeLoad(SDK)
+      }
 
       instance.value = await SDK.load({
         container,

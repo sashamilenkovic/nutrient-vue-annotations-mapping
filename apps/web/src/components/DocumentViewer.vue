@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
+import type NutrientViewer from '@nutrient-sdk/viewer'
 import { useNutrientViewer } from '@/composables/useNutrientViewer'
 
 const props = defineProps<{
   documentId: string
+  beforeLoad?: (SDK: typeof NutrientViewer) => void
 }>()
 
 const emit = defineEmits<{
@@ -11,7 +13,9 @@ const emit = defineEmits<{
 }>()
 
 const containerEl = ref<HTMLElement | null>(null)
-const { instance, isLoading, error, load } = useNutrientViewer()
+const { instance, isLoading, error, load } = useNutrientViewer({
+  beforeLoad: props.beforeLoad,
+})
 
 async function loadDocument(docId: string) {
   if (!containerEl.value) return

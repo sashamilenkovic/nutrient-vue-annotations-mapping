@@ -15,10 +15,10 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
-    "@nutrient-sdk/viewer": "nightly",
+    "@nutrient-sdk/viewer": "1.13.0-nightly.20260310",
+    "@types/node": "^24.11.0",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/tsconfig": "^0.8.1",
-    "@types/node": "^24.11.0",
     "npm-run-all2": "^8.0.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",

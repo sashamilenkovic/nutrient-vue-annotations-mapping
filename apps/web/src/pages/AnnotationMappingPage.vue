@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Instance } from '@nutrient-sdk/viewer'
+import type NutrientViewer from '@nutrient-sdk/viewer'
 import { getNutrientViewer } from '@/nutrient'
 import DocumentViewer from '@/components/DocumentViewer.vue'
 import AnnotationDemo from '@/components/AnnotationDemo.vue'
@@ -10,15 +11,48 @@ const instance = ref<Instance | null>(null)
 const documentId = ref<string>('')
 const jsonOutput = ref<string>('')
 const statusMessage = ref<string>('')
-const toolbarLimiting = ref(false)
 
 const {
   createAnnotationWithCustomData,
   exportInstantJSON,
 } = useAnnotations(instance)
 
-function onViewerLoaded(inst: Instance) {
+function restrictLineCaps(SDK: typeof NutrientViewer) {
+  SDK.Options.LINE_CAP_PRESETS = ['openArrow']
+}
+
+async function onViewerLoaded(inst: Instance) {
   instance.value = inst
+  const SDK = await getNutrientViewer()
+
+  // Remove plain "line" from toolbar — "arrow" (with openArrow forced) replaces it
+  inst.setToolbarItems((items) =>
+    items.filter((item) => item.type !== 'line'),
+  )
+
+  // Arrow: only show delete in secondary toolbar — cap is forced via presets
+  inst.setAnnotationToolbarItems((annotation, { defaultAnnotationToolbarItems }) => {
+    if (annotation instanceof SDK.Annotations.LineAnnotation) {
+      return defaultAnnotationToolbarItems.filter(
+        (item) => (item as { type?: string }).type === 'delete',
+      )
+    }
+    return defaultAnnotationToolbarItems
+  })
+
+  // Force openArrow end cap on both line and arrow presets
+  inst.setAnnotationPresets((presets) => ({
+    ...presets,
+    line: {
+      ...presets.line,
+      lineCaps: { start: null, end: 'openArrow' },
+    },
+    arrow: {
+      ...presets.arrow,
+      lineCaps: { start: null, end: 'openArrow' },
+    },
+  }))
+
   statusMessage.value = 'Document loaded successfully'
 }
 
@@ -238,39 +272,6 @@ async function registerTextStamp() {
   showStatus(`Text stamp added — open Stamp Picker to place it`)
 }
 
-// 3. Arrow — activate arrow tool with forced openArrow end cap
-async function demoArrow() {
-  const inst = instance.value
-  if (!inst) {
-    showStatus('Load a document first')
-    return
-  }
-  const SDK = await getNutrientViewer()
-
-  // Force openArrow end cap via the built-in "arrow" preset
-  inst.setAnnotationPresets((presets) => ({
-    ...presets,
-    arrow: {
-      ...presets.arrow,
-      lineCaps: { start: null, end: 'openArrow' },
-    },
-  }))
-  inst.setCurrentAnnotationPreset('arrow')
-
-  // Keep line caps block (has the arrow picker) + delete, hide the rest
-  inst.setAnnotationToolbarItems((annotation, { defaultAnnotationToolbarItems }) => {
-    if (annotation instanceof SDK.Annotations.LineAnnotation) {
-      return defaultAnnotationToolbarItems.filter(
-        (item) => !['stroke-color', 'fill-color', 'line-style', 'line-width', 'opacity'].includes((item as { type?: string }).type ?? ''),
-      )
-    }
-    return defaultAnnotationToolbarItems
-  })
-
-  inst.setViewState((vs) => vs.set('interactionMode', SDK.InteractionMode.SHAPE_LINE))
-  showStatus('Arrow tool activated — openArrow forced, toolbar limited')
-}
-
 
 // 4. Ink — activate ink drawing tool with limited toolbar
 async function demoInk() {
@@ -335,45 +336,6 @@ async function demoCustomData() {
   }
 }
 
-// 6. Toolbar limiting — per-type filtering
-async function toggleToolbarLimiting() {
-  toolbarLimiting.value = !toolbarLimiting.value
-  const inst = instance.value
-  if (!inst) return
-
-  const SDK = await getNutrientViewer()
-
-  if (toolbarLimiting.value) {
-    inst.setAnnotationToolbarItems((annotation, { defaultAnnotationToolbarItems }) => {
-      const type = (item: unknown) => (item as { type?: string }).type ?? ''
-      if (annotation instanceof SDK.Annotations.InkAnnotation) {
-        // Ink: stroke-color, line-width, delete
-        return defaultAnnotationToolbarItems.filter(
-          (item) => ['stroke-color', 'line-width', 'delete', 'spacer'].includes(type(item)),
-        )
-      }
-      if (annotation instanceof SDK.Annotations.LineAnnotation) {
-        // Arrow: line caps block + delete (hides colors/opacity/thickness)
-        return defaultAnnotationToolbarItems.filter(
-          (item) => !['stroke-color', 'fill-color', 'line-style', 'line-width', 'opacity'].includes(type(item)),
-        )
-      }
-      if (annotation instanceof SDK.Annotations.RectangleAnnotation) {
-        // Rectangle: fill-color, opacity, delete
-        return defaultAnnotationToolbarItems.filter(
-          (item) => ['fill-color', 'opacity', 'delete', 'spacer'].includes(type(item)),
-        )
-      }
-      return defaultAnnotationToolbarItems
-    })
-    showStatus('Toolbar limiting ON — per-type restrictions active')
-  } else {
-    inst.setAnnotationToolbarItems((_annotation, { defaultAnnotationToolbarItems }) => {
-      return defaultAnnotationToolbarItems
-    })
-    showStatus('Toolbar limiting OFF — full toolbars restored')
-  }
-}
 
 async function doExportInstantJSON() {
   const json = await exportInstantJSON()
@@ -422,12 +384,6 @@ async function doExportAnnotations() {
           <input ref="fileInput" type="file" accept=".pdf,.docx,.xlsx,.pptx" hidden @change="uploadDocument">
         </label>
 
-        <button class="btn btn-secondary" @click="doExportAnnotations">
-          Export Annotations
-        </button>
-        <button class="btn btn-secondary" @click="doExportInstantJSON">
-          Instant JSON
-        </button>
       </div>
 
       <div v-if="statusMessage" class="status-message">{{ statusMessage }}</div>
@@ -435,7 +391,7 @@ async function doExportAnnotations() {
       <div class="demos-list">
         <AnnotationDemo
           title="1. Redaction"
-          description="Both redaction tools create pspdfkit/markup/redaction. The area tool always stores exactly one rect — compatible with single-rectangle storage. Draw on the document to create a redaction, then export Instant JSON to verify."
+          description="Both redaction tools create pspdfkit/markup/redaction. The area tool always stores exactly one rect — compatible with single-rectangle storage. Draw on the document to create a redaction, then check DB to validate content."
         >
           <div class="btn-row">
             <button class="btn" @click="demoAreaRedaction">Area Redaction Tool</button>
@@ -487,14 +443,12 @@ async function doExportAnnotations() {
 
         <AnnotationDemo
           title="3. Arrow"
-          description="Forces lineCaps: { end: 'openArrow' } via setAnnotationPresets(). annotationToolbarItems hides line cap pickers and dash array — only stroke-color, line-width, opacity, and delete remain."
-        >
-          <button class="btn" @click="demoArrow">Arrow Tool (openArrow only)</button>
-        </AnnotationDemo>
+          description="Arrow tool in the main toolbar is restricted to openArrow only via LINE_CAP_PRESETS and setAnnotationPresets(). Secondary toolbar shows only delete. Click the Arrow tool in the toolbar above to try it."
+        />
 
         <AnnotationDemo
           title="4. Ink (Line Overlay)"
-          description="Freehand ink drawing. Bounding box = min/max of all points ± lineWidth/2. Toolbar can be restricted to stroke-color, line-width, delete only."
+          description="Freehand ink drawing (pspdfkit/ink). Bounding box is already stored in the DB content column via the bbox field — no reconstruction needed. Toolbar restricted to stroke-color, line-width, delete via annotationToolbarItems."
         >
           <button class="btn" @click="demoInk">Ink Drawing Tool</button>
         </AnnotationDemo>
@@ -506,17 +460,9 @@ async function doExportAnnotations() {
           <button class="btn" @click="demoRectangle">Rectangle Tool</button>
         </AnnotationDemo>
 
-        <AnnotationDemo
-          title="6. Toolbar Limiting"
-          description="Per-type toolbar filtering via annotationToolbarItems callback. Ink gets stroke-color/line-width/delete. Line gets stroke-color/delete. Rectangle gets fill-color/opacity/delete. Toggle and then select an annotation to see restricted toolbars."
-        >
-          <button class="btn" :class="{ active: toolbarLimiting }" @click="toggleToolbarLimiting">
-            {{ toolbarLimiting ? 'Disable Toolbar Limiting' : 'Enable Toolbar Limiting' }}
-          </button>
-        </AnnotationDemo>
 
         <AnnotationDemo
-          title="7. Custom Fields (CreatedBy / ModifiedBy)"
+          title="6. Custom Fields (CreatedBy / ModifiedBy)"
           description="Annotations support customData for arbitrary key-value pairs + creatorName. Both persist through Instant JSON and Document Engine. Export JSON to verify round-trip."
         >
           <button class="btn" @click="demoCustomData">Create with Custom Data</button>
@@ -542,6 +488,7 @@ async function doExportAnnotations() {
       <DocumentViewer
         v-if="documentId"
         :document-id="documentId"
+        :before-load="restrictLineCaps"
         @loaded="onViewerLoaded"
       />
     </div>
@@ -692,12 +639,6 @@ async function doExportAnnotations() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.btn.active {
-  background: #1565c0;
-  color: #fff;
-  border-color: #1565c0;
 }
 
 .btn-secondary {
