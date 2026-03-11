@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import type { Instance } from '@nutrient-sdk/viewer'
 import type NutrientViewer from '@nutrient-sdk/viewer'
 import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
@@ -14,7 +14,6 @@ export function useNutrientViewer(
   const instance = ref<Instance | null>(null)
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
-  const containerRef = ref<HTMLElement | null>(null)
   const currentDocumentId = ref<string | null>(null)
 
   const { serverUrl: rawServerUrl, theme = 'LIGHT', jwtEndpoint = '/api/jwt' } = options
@@ -45,7 +44,6 @@ export function useNutrientViewer(
 
     isLoading.value = true
     error.value = null
-    containerRef.value = container
     currentDocumentId.value = documentId
 
     try {
@@ -75,22 +73,8 @@ export function useNutrientViewer(
   }
 
   async function unload() {
-    const container = containerRef.value
-    if (container) {
-      instance.value = null
-      containerRef.value = null
-      try {
-        const SDK = await getNutrientViewer()
-        SDK.unload(container)
-      } catch {
-        // Ignore unload errors
-      }
-    }
+    instance.value = null
   }
-
-  onUnmounted(() => {
-    unload()
-  })
 
   return {
     instance,

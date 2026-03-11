@@ -7,13 +7,13 @@ const route = useRoute()
 <template>
   <div class="app">
     <header class="nav-header">
-      <div class="nav-brand">Nutrient Annotation Mapping Demo</div>
+      <div class="nav-brand">Nutrient Text Comparison &amp; Movement Detection Prototype</div>
       <nav class="nav-links">
         <RouterLink
           to="/"
           :class="{ active: route.name === 'annotations' }"
         >
-          Annotation Mapping
+          Ticket Q&amp;A
         </RouterLink>
         <RouterLink
           to="/text-comparison"

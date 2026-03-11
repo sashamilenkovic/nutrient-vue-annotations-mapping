@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, type ComponentPublicInstance } from 'vue'
 import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 
 // --- Types ---
@@ -79,7 +79,6 @@ async function extractText(file: File, label: string): Promise<string> {
   let buffer = await file.arrayBuffer()
   const isDocx = file.name.toLowerCase().endsWith('.docx')
 
-
   // .docx: textLinesForPageIndex hangs in headless mode,
   // so convert to PDF first, then extract text from the PDF.
   if (isDocx) {
@@ -98,7 +97,7 @@ async function extractText(file: File, label: string): Promise<string> {
       const convertInstance = await SDK.load(loadConfig)
       const pdfBuffer = await convertInstance.exportPDF()
       await SDK.unload(convertContainer)
-      buffer = pdfBuffer.buffer as ArrayBuffer
+      buffer = pdfBuffer as ArrayBuffer
     } finally {
       if (document.body.contains(convertContainer)) {
         document.body.removeChild(convertContainer)
@@ -310,22 +309,6 @@ async function runComparison() {
   }
 }
 
-function onDocAChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) {
-    docAFile.value = file
-    docAName.value = file.name
-  }
-}
-
-function onDocBChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) {
-    docBFile.value = file
-    docBName.value = file.name
-  }
-}
-
 function toggleWordLevel() {
   wordLevel.value = !wordLevel.value
   if (textA.value && textB.value) {
@@ -347,29 +330,18 @@ async function loadDefaultDocuments() {
   docBName.value = 'text-comparison-b.pdf'
 }
 
-onMounted(() => {
-  loadDefaultDocuments()
+onMounted(async () => {
+  await loadDefaultDocuments()
+  runComparison()
 })
 
-onUnmounted(() => {
-  // cleanup handled per-extraction in extractText()
-})
+
 </script>
 
 <template>
   <div class="page-layout">
     <div class="controls-bar">
-      <label class="file-label">
-        <span class="file-btn">Document A</span>
-        <span class="file-name">{{ docAName }}</span>
-        <input type="file" accept=".pdf" hidden @change="onDocAChange">
-      </label>
-
-      <label class="file-label">
-        <span class="file-btn">Document B</span>
-        <span class="file-name">{{ docBName }}</span>
-        <input type="file" accept=".pdf" hidden @change="onDocBChange">
-      </label>
+      <span class="doc-names">{{ docAName }} vs {{ docBName }}</span>
 
       <button
         class="btn"
@@ -541,33 +513,10 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.file-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.file-btn {
-  padding: 6px 12px;
+.doc-names {
   font-size: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  white-space: nowrap;
-}
-
-.file-btn:hover {
-  background: #f0f0f0;
-}
-
-.file-name {
-  font-size: 12px;
-  color: #666;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: #555;
+  font-weight: 500;
 }
 
 .btn {

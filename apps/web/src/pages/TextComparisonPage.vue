@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
+import type NutrientViewerType from '@nutrient-sdk/viewer'
 
 const containerEl = ref<HTMLElement | null>(null)
 const wordLevel = ref(true)
 const containerKey = ref(0)
 const isLoading = ref(false)
 const error = ref<string>('')
+let sdk: typeof NutrientViewerType | null = null
 
 const docAName = ref('LeaseContract.docx')
 const docBName = ref('LeaseContract3.docx')
@@ -40,6 +42,7 @@ async function loadComparison() {
 
   try {
     const SDK = await getNutrientViewer()
+    sdk = SDK
 
     // Unload previous instance
     try {
@@ -67,22 +70,6 @@ async function loadComparison() {
   }
 }
 
-function onDocAChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) {
-    docAName.value = file.name
-    file.arrayBuffer().then(buf => { docABuffer.value = buf })
-  }
-}
-
-function onDocBChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) {
-    docBName.value = file.name
-    file.arrayBuffer().then(buf => { docBBuffer.value = buf })
-  }
-}
-
 async function toggleWordLevel() {
   if (containerEl.value) {
     try {
@@ -105,15 +92,9 @@ onMounted(async () => {
   loadComparison()
 })
 
-onUnmounted(async () => {
-  const container = containerEl.value
-  if (container) {
-    try {
-      const SDK = await getNutrientViewer()
-      SDK.unload(container)
-    } catch {
-      // ignore
-    }
+onBeforeUnmount(() => {
+  if (sdk && containerEl.value) {
+    try { sdk.unload(containerEl.value) } catch { /* ignore */ }
   }
 })
 </script>
@@ -121,21 +102,7 @@ onUnmounted(async () => {
 <template>
   <div class="page-layout">
     <div class="controls-bar">
-      <div class="control-group">
-        <label class="file-label">
-          <span class="file-btn">Document A</span>
-          <span class="file-name">{{ docAName }}</span>
-          <input type="file" accept=".pdf,.docx" hidden @change="onDocAChange">
-        </label>
-      </div>
-
-      <div class="control-group">
-        <label class="file-label">
-          <span class="file-btn">Document B</span>
-          <span class="file-name">{{ docBName }}</span>
-          <input type="file" accept=".pdf,.docx" hidden @change="onDocBChange">
-        </label>
-      </div>
+      <span class="doc-names">{{ docAName }} vs {{ docBName }}</span>
 
       <button
         class="btn"
@@ -182,39 +149,10 @@ onUnmounted(async () => {
   flex-wrap: wrap;
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.file-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.file-btn {
-  padding: 6px 12px;
+.doc-names {
   font-size: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  white-space: nowrap;
-}
-
-.file-btn:hover {
-  background: #f0f0f0;
-}
-
-.file-name {
-  font-size: 12px;
-  color: #666;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: #555;
+  font-weight: 500;
 }
 
 .btn {

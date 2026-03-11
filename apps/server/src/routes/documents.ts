@@ -1,6 +1,6 @@
 import { createRouter, eventHandler, readMultipartFormData, createError, getRouterParam } from 'h3'
 
-const DE_URL = () => process.env.DE_URL || 'http://localhost:5000'
+const DE_URL = () => process.env.DE_URL || 'http://localhost:5050'
 const DE_TOKEN = () => process.env.DE_API_AUTH_TOKEN || 'secret'
 
 function authHeaders() {

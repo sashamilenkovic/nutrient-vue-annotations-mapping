@@ -1,4 +1,4 @@
-# Demo Notes — Annotation Mapping Q&A
+# Demo Notes — Ticket Q&A
 
 Notes on each demo section, what the customer asked, and what to show.
 
@@ -125,6 +125,24 @@ All of this is configured once in `onViewerLoaded()` and `restrictLineCaps()` �
 - Passes `customData: { CreatedBy: 'Jane Smith', ModifiedBy: 'John Doe', department: 'Legal' }` and `creatorName: 'Jane Smith'` directly to the annotation constructor
 - Both fields are first-class in Instant JSON — `customData` is an arbitrary JSON object, `creatorName` is a top-level string field
 - Document Engine persists both in the `records.content` JSONB column without any extra configuration
+
+---
+
+## 7. Page Rotation
+
+**Question:** How does page rotation work? Is it persistent?
+
+**Answer:** Two distinct rotation types. UI rotation (`ViewState.pagesRotation`) is visual-only, affects all pages, and is not persisted — it resets on reload. PDF rotation (`applyOperations` with `rotatePages`) modifies the page's `/Rotate` entry permanently and persists through save/export.
+
+**Demo flow:**
+1. **UI Rotation:** Click "Rotate Left" / "Rotate Right" under "UI Rotation" — the document rotates visually. The readout shows `viewState.pagesRotation` changing. Reload the page — rotation resets to 0°.
+2. **PDF Rotation:** Click "Rotate Left" / "Rotate Right" under "PDF Rotation" — the current page is permanently rotated. The readout shows `pageInfo.rotation` changing. This persists through save/export.
+
+**Implementation:**
+- **UI rotation:** `inst.setViewState((vs) => vs.rotateLeft())` / `vs.rotateRight()` — modifies `ViewState.pagesRotation` (visual only, all pages, not saved)
+- **PDF rotation:** `inst.applyOperations([{ type: 'rotatePages', pageIndexes: [pageIndex], rotateBy: 90 }])` — modifies the page permanently (per-page, saved to PDF)
+- Live readouts track `viewState.pagesRotation` and `pageInfoForIndex(pageIndex).rotation` via the `viewState.change` event listener
+- Both use 90° steps (rotateBy: 90 for CW, 270 for CCW)
 
 ---
 

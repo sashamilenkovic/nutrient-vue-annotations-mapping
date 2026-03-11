@@ -19,5 +19,5 @@ listen(toNodeListener(app), {
   showURL: true,
 }).then(() => {
   console.log(`Server running on http://localhost:${port}`)
-  console.log(`Document Engine URL: ${process.env.DE_URL || 'http://localhost:5000'}`)
+  console.log(`Document Engine URL: ${process.env.DE_URL || 'http://localhost:5050'}`)
 })

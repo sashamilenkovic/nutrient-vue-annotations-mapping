@@ -1,6 +1,6 @@
 # Nutrient Document Engine + PostgreSQL
 # Run: docker compose up -d
-# Dashboard: http://localhost:5000/dashboard
+# Dashboard: http://localhost:5050/dashboard
 
 services:
   db:

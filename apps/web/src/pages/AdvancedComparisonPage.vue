@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
 import type NutrientViewerType from '@nutrient-sdk/viewer'
 
@@ -66,18 +66,12 @@ onMounted(async () => {
   runComparison()
 })
 
-onUnmounted(async () => {
-  await cleanup()
-})
+onBeforeUnmount(cleanup)
 
-async function cleanup() {
-  // Capture refs synchronously before any await — Vue nulls template refs during unmount
-  const elA = containerA.value
-  const elB = containerB.value
+function cleanup() {
   try {
-    if (!SDK) SDK = await getNutrientViewer()
-    if (instA && elA) { SDK.unload(elA); instA = null }
-    if (instB && elB) { SDK.unload(elB); instB = null }
+    if (SDK && instA && containerA.value) { SDK.unload(containerA.value); instA = null }
+    if (SDK && instB && containerB.value) { SDK.unload(containerB.value); instB = null }
   } catch { /* ignore */ }
 }
 
@@ -91,16 +85,6 @@ async function loadDefaultDocuments() {
   docBFile.value = new File([blobB], 'LeaseContract3.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
   docAName.value = 'LeaseContract.docx'
   docBName.value = 'LeaseContract3.docx'
-}
-
-function onDocAChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) { docAFile.value = file; docAName.value = file.name }
-}
-
-function onDocBChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) { docBFile.value = file; docBName.value = file.name }
 }
 
 // --- Text extraction with position info ---
@@ -681,17 +665,7 @@ async function runComparison() {
 <template>
   <div class="page-layout">
     <div class="controls-bar">
-      <label class="file-label">
-        <span class="file-btn">Document A</span>
-        <span class="file-name">{{ docAName }}</span>
-        <input type="file" accept=".pdf,.docx" hidden @change="onDocAChange">
-      </label>
-
-      <label class="file-label">
-        <span class="file-btn">Document B</span>
-        <span class="file-name">{{ docBName }}</span>
-        <input type="file" accept=".pdf,.docx" hidden @change="onDocBChange">
-      </label>
+      <span class="doc-names">{{ docAName }} vs {{ docBName }}</span>
 
       <button class="btn btn-primary" :disabled="isLoading" @click="runComparison">
         {{ isLoading ? 'Analyzing...' : 'Compare' }}
@@ -773,31 +747,10 @@ async function runComparison() {
   z-index: 10;
 }
 
-.file-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.file-btn {
-  padding: 6px 12px;
+.doc-names {
   font-size: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  white-space: nowrap;
-}
-
-.file-btn:hover { background: #f0f0f0; }
-
-.file-name {
-  font-size: 12px;
-  color: #666;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: #555;
+  font-weight: 500;
 }
 
 .btn {
@@ -1013,16 +966,6 @@ async function runComparison() {
   flex: 1;
   position: relative;
   min-height: 200px;
-}
-
-.viewer-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #bbb;
-  font-size: 14px;
 }
 
 .viewer-divider {

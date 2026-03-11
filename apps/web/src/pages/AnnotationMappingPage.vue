@@ -16,6 +16,11 @@ const documentId = ref<string>((route.query.documentId as string) || '')
 const jsonOutput = ref<string>('')
 const statusMessage = ref<string>('')
 
+// 7. Page Rotation — live state
+const uiRotation = ref(0)
+const pdfRotation = ref(0)
+const currentPageIndex = ref(0)
+
 const {
   createAnnotationWithCustomData,
   exportInstantJSON,
@@ -74,6 +79,13 @@ async function onViewerLoaded(inst: Instance) {
       opacity: 0.3,
     },
   }))
+
+  // Track UI rotation + current page for the rotation demo
+  inst.addEventListener('viewState.change', (viewState) => {
+    uiRotation.value = viewState.pagesRotation
+    currentPageIndex.value = viewState.currentPageIndex
+    pdfRotation.value = inst.pageInfoForIndex(viewState.currentPageIndex)?.rotation ?? 0
+  })
 
   statusMessage.value = 'Document loaded successfully'
 }
@@ -342,7 +354,7 @@ async function demoRectangle() {
   showStatus('Rectangle tool activated — toolbar: fill-color, opacity, delete')
 }
 
-// 7. Custom Data — programmatic (no drawing tool for this)
+// 6. Custom Data — programmatic (no drawing tool for this)
 async function demoCustomData() {
   const result = await createAnnotationWithCustomData(
     0,
@@ -351,7 +363,7 @@ async function demoCustomData() {
     'Jane Smith',
   )
   if (result) {
-    showStatus('Annotation with custom data created — export JSON to verify')
+    showStatus('Annotation with custom data created — check DB to verify')
     const json = await exportInstantJSON()
     if (json) jsonOutput.value = JSON.stringify(json, null, 2)
   } else {
@@ -360,35 +372,47 @@ async function demoCustomData() {
 }
 
 
-async function doExportInstantJSON() {
-  const json = await exportInstantJSON()
-  if (json) {
-    jsonOutput.value = JSON.stringify(json, null, 2)
-    showStatus('Instant JSON exported (changes only — annotations already synced may not appear)')
-  } else {
-    showStatus('No instance loaded')
-  }
+// Reset — clear document and start fresh
+function resetDocument() {
+  documentId.value = ''
+  instance.value = null
+  jsonOutput.value = ''
+  uiRotation.value = 0
+  pdfRotation.value = 0
+  currentPageIndex.value = 0
 }
 
-async function doExportAnnotations() {
+// 7. Page Rotation — two modes
+function demoUIRotateLeft() {
   const inst = instance.value
-  if (!inst) {
-    showStatus('No instance loaded')
-    return
-  }
+  if (!inst) { showStatus('Load a document first'); return }
+  inst.setViewState((vs) => vs.rotateLeft())
+  showStatus('UI rotation: 90° CCW (visual only — not saved to PDF)')
+}
 
-  const pageCount = inst.totalPageCount
-  const allAnnotations: unknown[] = []
+function demoUIRotateRight() {
+  const inst = instance.value
+  if (!inst) { showStatus('Load a document first'); return }
+  inst.setViewState((vs) => vs.rotateRight())
+  showStatus('UI rotation: 90° CW (visual only — not saved to PDF)')
+}
 
-  for (let i = 0; i < pageCount; i++) {
-    const annotations = await inst.getAnnotations(i)
-    for (const ann of annotations) {
-      allAnnotations.push(ann.toJSON())
-    }
-  }
+async function demoPDFRotateLeft() {
+  const inst = instance.value
+  if (!inst) { showStatus('Load a document first'); return }
+  const pageIndex = inst.viewState.currentPageIndex
+  await inst.applyOperations([{ type: 'rotatePages', pageIndexes: [pageIndex], rotateBy: 270 }])
+  pdfRotation.value = inst.pageInfoForIndex(pageIndex)?.rotation ?? 0
+  showStatus(`PDF rotation: page ${pageIndex + 1} rotated 90° CCW (permanent)`)
+}
 
-  jsonOutput.value = JSON.stringify(allAnnotations, null, 2)
-  showStatus(`Exported ${allAnnotations.length} annotation(s) across ${pageCount} page(s)`)
+async function demoPDFRotateRight() {
+  const inst = instance.value
+  if (!inst) { showStatus('Load a document first'); return }
+  const pageIndex = inst.viewState.currentPageIndex
+  await inst.applyOperations([{ type: 'rotatePages', pageIndexes: [pageIndex], rotateBy: 90 }])
+  pdfRotation.value = inst.pageInfoForIndex(pageIndex)?.rotation ?? 0
+  showStatus(`PDF rotation: page ${pageIndex + 1} rotated 90° CW (permanent)`)
 }
 </script>
 
@@ -397,14 +421,14 @@ async function doExportAnnotations() {
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>Annotation Demos</h2>
-        <p class="sidebar-subtitle">Document Engine mode — each section demonstrates an annotation mapping question</p>
+        <h2>Ticket Q&amp;A</h2>
+        <p class="sidebar-subtitle">Document Engine mode — each section answers a specific integration question</p>
       </div>
 
       <div class="sidebar-controls">
         <label class="upload-btn">
           Upload Document (PDF/DOCX)
-          <input ref="fileInput" type="file" accept=".pdf,.docx,.xlsx,.pptx" hidden @change="uploadDocument">
+          <input type="file" accept=".pdf,.docx,.xlsx,.pptx" hidden @change="uploadDocument">
         </label>
 
       </div>
@@ -486,10 +510,40 @@ async function doExportAnnotations() {
 
         <AnnotationDemo
           title="6. Custom Fields (CreatedBy / ModifiedBy)"
-          description="Annotations support customData for arbitrary key-value pairs + creatorName. Both persist through Instant JSON and Document Engine. Export JSON to verify round-trip."
+          description="Annotations support customData for arbitrary key-value pairs + creatorName. Both persist through Instant JSON and Document Engine. Check DB to validate content."
         >
           <button class="btn" @click="demoCustomData">Create with Custom Data</button>
         </AnnotationDemo>
+
+        <AnnotationDemo
+          title="7. Page Rotation"
+          description="Two rotation types: UI rotation (ViewState.pagesRotation) is visual-only, affects all pages, and is not persisted. PDF rotation (applyOperations rotatePages) modifies the current page permanently and persists through save/export. Both use 90° steps."
+        >
+          <div v-if="instance" class="rotation-state">
+            <div class="rotation-readout">
+              <span class="rotation-label">UI (viewState.pagesRotation):</span>
+              <span class="rotation-value">{{ uiRotation }}°</span>
+            </div>
+            <div class="rotation-readout">
+              <span class="rotation-label">PDF (pageInfo.rotation) page {{ currentPageIndex + 1 }}:</span>
+              <span class="rotation-value">{{ pdfRotation }}°</span>
+            </div>
+          </div>
+          <p class="demo-label">UI Rotation (visual only)</p>
+          <div class="btn-row">
+            <button class="btn" @click="demoUIRotateLeft">Rotate Left</button>
+            <button class="btn" @click="demoUIRotateRight">Rotate Right</button>
+          </div>
+          <p class="demo-label">PDF Rotation (permanent)</p>
+          <div class="btn-row">
+            <button class="btn" @click="demoPDFRotateLeft">Rotate Left</button>
+            <button class="btn" @click="demoPDFRotateRight">Rotate Right</button>
+          </div>
+        </AnnotationDemo>
+      </div>
+
+      <div v-if="instance" class="sidebar-footer">
+        <button class="btn btn-danger" @click="resetDocument">Clear Document</button>
       </div>
 
       <!-- JSON Output -->
@@ -611,6 +665,39 @@ async function doExportAnnotations() {
   gap: 6px;
 }
 
+.demo-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  margin: 4px 0 2px;
+}
+
+.rotation-state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+
+.rotation-readout {
+  display: flex;
+  justify-content: space-between;
+}
+
+.rotation-label {
+  color: #666;
+}
+
+.rotation-value {
+  font-weight: 700;
+  color: #1565c0;
+}
+
 .stamp-text-controls {
   display: flex;
   flex-direction: column;
@@ -664,19 +751,20 @@ async function doExportAnnotations() {
   text-overflow: ellipsis;
 }
 
-.btn-secondary {
-  flex: 1;
-  padding: 8px;
-  font-size: 12px;
-  border: 1px solid #1565c0;
-  border-radius: 6px;
-  background: #fff;
-  color: #1565c0;
-  cursor: pointer;
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #e0e0e0;
 }
 
-.btn-secondary:hover {
-  background: #e3f2fd;
+.btn-danger {
+  width: 100%;
+  color: #c62828;
+  border-color: #e57373;
+}
+
+.btn-danger:hover {
+  background: #ffebee;
+  border-color: #c62828;
 }
 
 .json-output {

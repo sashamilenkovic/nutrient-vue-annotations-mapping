@@ -12,7 +12,7 @@ export function generateJWT(
     throw new Error('DE_JWT_PRIVATE_KEY environment variable is not set')
   }
 
-  const claims: Record<string, unknown> = {
+  const claims: { document_id: string; permissions: string[]; layer?: string } = {
     document_id: documentId,
     permissions,
   }
