@@ -14,9 +14,14 @@ Monorepo with two apps:
 | Page | Mode | Description |
 |------|------|-------------|
 | `/` (Ticket Q&A) | Document Engine | Annotation demos — redaction, stamps, arrows, ink, rectangles, custom data, page rotation. Requires Document Engine running via Docker. |
+| `/rich-stamps` | Document Engine | Rich stamp annotations — multiline text with custom fonts (`font`, `fontSize`, `fontColor`, `isBold`, `isItalic`) and embedded images (`imageAttachmentId`). See note below. |
 | `/text-comparison` | Standalone | Headless text extraction + custom LCS diff with `wordLevel` toggle. No server needed — runs entirely in the browser. |
 | `/cross-page-comparison` | Standalone | Headless text extraction + LCS diff algorithm. No server needed. |
 | `/advanced-comparison` | Standalone | Line-level diff with move detection and page-aware highlighting. No server needed. |
+
+### Rich Stamps — Version Requirements
+
+Rich stamp annotations require **`@nutrient-sdk/viewer` version `1.14.0-nightly.20260330` or later** and the **`pspdfkit/document-engine:nightly` Docker image from 2026-03-30 or later**. These features will ship in **Web SDK 1.14.0** and a corresponding Document Engine stable release in the coming weeks.
 
 ## Prerequisites
 
@@ -139,6 +144,7 @@ pnpm type-check   # TypeScript check across all packages
 | `apps/web/src/composables/useNutrientViewer.ts` | DE mode viewer lifecycle |
 | `apps/web/src/composables/useAnnotations.ts` | Annotation CRUD helpers |
 | `apps/web/src/pages/AnnotationMappingPage.vue` | 7 annotation demo sections |
+| `apps/web/src/pages/RichStampPage.vue` | Multiline + image stamp demos (standalone) |
 | `apps/web/src/pages/TextComparisonPage.vue` | Headless extraction + LCS diff UI |
 | `apps/web/src/pages/CrossPageComparisonPage.vue` | Headless extraction + LCS diff |
 | `apps/server/src/routes/jwt.ts` | JWT generation endpoint |

@@ -3,6 +3,7 @@ import AnnotationMappingPage from '@/pages/AnnotationMappingPage.vue'
 import TextComparisonPage from '@/pages/TextComparisonPage.vue'
 import CrossPageComparisonPage from '@/pages/CrossPageComparisonPage.vue'
 import AdvancedComparisonPage from '@/pages/AdvancedComparisonPage.vue'
+import RichStampPage from '@/pages/RichStampPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -26,6 +27,11 @@ const router = createRouter({
       path: '/advanced-comparison',
       name: 'advanced-comparison',
       component: AdvancedComparisonPage,
+    },
+    {
+      path: '/rich-stamps',
+      name: 'rich-stamps',
+      component: RichStampPage,
     },
   ],
 })

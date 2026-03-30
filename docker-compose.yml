@@ -23,7 +23,7 @@ services:
       retries: 10
 
   document-engine:
-    image: pspdfkit/document-engine:latest
+    image: pspdfkit/document-engine:nightly
     container_name: annotations-demo-document-engine
     ports:
       - '5050:5000'

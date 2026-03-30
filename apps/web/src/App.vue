@@ -33,6 +33,12 @@ const route = useRoute()
         >
           Advanced Comparison
         </RouterLink>
+        <RouterLink
+          to="/rich-stamps"
+          :class="{ active: route.name === 'rich-stamps' }"
+        >
+          Rich Stamps
+        </RouterLink>
       </nav>
     </header>
     <main class="main-content">
