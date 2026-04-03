@@ -410,19 +410,24 @@ async function addAllStamps() {
   const imgId = checkmarkAttachmentId ?? undefined
 
   // Layout: 2 columns, stacked vertically
-  const col1 = 30
-  const col2 = 340
-  let y = 30
+  // Standard letter page is 612x792pt — keep stamps within bounds
+  const col1 = 20
+  const col2 = 310
+  let y = 20
 
   const stamps = []
   for (const template of STAMP_TEMPLATES) {
     const x = stamps.length % 2 === 0 ? col1 : col2
     if (stamps.length % 2 === 0 && stamps.length > 0) y += 140
 
+    // Clamp width so it doesn't exceed page edge
+    const maxWidth = 280
+    const w = Math.min(template.width, maxWidth)
+
     const rect = new sdk.Geometry.Rect({
       left: x,
       top: y,
-      width: template.width,
+      width: w,
       height: template.height,
     })
 
