@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@nutrient-sdk/viewer':
-        specifier: 1.13.0
-        version: 1.13.0
+        specifier: 1.14.0-nightly.20260403
+        version: 1.14.0-nightly.20260403
     devDependencies:
       typescript:
         specifier: ~5.9.3
@@ -54,8 +54,8 @@ importers:
         version: 5.0.3(@vue/compiler-sfc@3.5.29)(vue@3.5.29(typescript@5.9.3))
     devDependencies:
       '@nutrient-sdk/viewer':
-        specifier: 1.14.0-nightly.20260330
-        version: 1.14.0-nightly.20260330
+        specifier: 1.14.0-nightly.20260403
+        version: 1.14.0-nightly.20260403
       '@types/node':
         specifier: ^24.11.0
         version: 24.11.0
@@ -273,11 +273,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@nutrient-sdk/viewer@1.13.0':
-    resolution: {integrity: sha512-qnqM+gFENPOv7eW+tWSVusySTxp5jx+AQjVmB2APPNMLukTdYXfSOHcrzrHYNIoioS6LD1SZGpYZOZ7enBxqOg==}
-
-  '@nutrient-sdk/viewer@1.14.0-nightly.20260330':
-    resolution: {integrity: sha512-7Fc4pOy5dpLNncCQruFegbDVaG1lVZS57FpVbzaLU3GFrxOXAVvat/0rbRjcwQSCrmdtJCQ6EhZsKinwEyE7xQ==}
+  '@nutrient-sdk/viewer@1.14.0-nightly.20260403':
+    resolution: {integrity: sha512-1Gql5cVZhpOpvNCyHxA1VSmYzx/nK5LoY9WoXq1joq89BYxedROrgp8E7lN+ZiLxwFRH6GpVf87+uWUa4wYe+g==}
 
   '@parcel/watcher-android-arm64@2.5.6':
     resolution: {integrity: sha512-YQxSS34tPF/6ZG7r/Ih9xy+kP/WwediEUsqmtf0cuCV5TPPKw/PQHRhueUo6JdeFJaqV3pyjm0GdYjZotbRt/A==}
@@ -1259,11 +1256,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@nutrient-sdk/viewer@1.13.0':
-    dependencies:
-      '@types/react': 18.3.28
-
-  '@nutrient-sdk/viewer@1.14.0-nightly.20260330':
+  '@nutrient-sdk/viewer@1.14.0-nightly.20260403':
     dependencies:
       '@types/react': 18.3.28
 
