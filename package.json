@@ -17,6 +17,6 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@nutrient-sdk/viewer": "1.14.0-nightly.20260403"
+    "@nutrient-sdk/viewer": "1.14.0-nightly.20260408"
   }
 }

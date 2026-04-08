@@ -1,18 +1,29 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount, computed } from 'vue'
-import type { Instance } from '@nutrient-sdk/viewer'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { Instance, AnnotationsUnion } from '@nutrient-sdk/viewer'
 import type NutrientViewer from '@nutrient-sdk/viewer'
-import { getNutrientViewer, baseUrl, licenseKey } from '@/nutrient'
+import { getNutrientViewer } from '@/nutrient'
+import DocumentViewer from '@/components/DocumentViewer.vue'
 
-const containerEl = ref<HTMLElement | null>(null)
+const route = useRoute()
+const router = useRouter()
+
 const instance = ref<Instance | null>(null)
 const SDK = ref<typeof NutrientViewer | null>(null)
-const isLoading = ref(false)
+const documentId = ref<string>((route.query.documentId as string) || '')
 const stampsPlaced = ref(false)
+const statusMessage = ref<string>('')
 
 // Tracks which template the selected annotation matches
 const selectedSnippetLabel = ref<string | null>(null)
 const selectedSnippetCode = ref<string | null>(null)
+
+// Sync documentId to URL query params
+watch(documentId, (id) => {
+  const query = id ? { documentId: id } : {}
+  router.replace({ query })
+})
 
 interface StampTemplate {
   label: string
@@ -22,7 +33,7 @@ interface StampTemplate {
   snippet: string
   // Used to match a selected annotation back to this template
   match: (ann: any) => boolean
-  create: (sdk: typeof NutrientViewer, pageIndex: number, rect: any, imageAttachmentId?: string) => any
+  create: (sdk: typeof NutrientViewer, pageIndex: number, rect: InstanceType<typeof NutrientViewer.Geometry.Rect>, imageAttachmentId?: string) => AnnotationsUnion
 }
 
 const STAMP_TEMPLATES: StampTemplate[] = [
@@ -313,84 +324,75 @@ function createCheckmarkIcon(): Promise<Blob> {
 // --- Lifecycle ---
 
 let checkmarkAttachmentId: string | null = null
-let selectionSub: (() => void) | null = null
 
-onBeforeUnmount(() => {
-  selectionSub?.()
-  if (containerEl.value && SDK.value) {
-    try { SDK.value.unload(containerEl.value) } catch { /* ignore */ }
-  }
-})
+function showStatus(msg: string) {
+  statusMessage.value = msg
+  setTimeout(() => {
+    if (statusMessage.value === msg) statusMessage.value = ''
+  }, 3000)
+}
 
-// --- Document loading ---
+// --- Document Engine loading ---
 
-async function loadDocument(buffer: ArrayBuffer) {
-  if (!containerEl.value) return
-  isLoading.value = true
+async function onViewerLoaded(inst: Instance) {
+  const sdk = await getNutrientViewer()
+  SDK.value = sdk
+  instance.value = inst
   checkmarkAttachmentId = null
   stampsPlaced.value = false
-  selectionSub?.()
+  selectedSnippetLabel.value = null
+  selectedSnippetCode.value = null
 
-  try {
-    const sdk = await getNutrientViewer()
-    SDK.value = sdk
-    try { sdk.unload(containerEl.value) } catch { /* no previous */ }
+  // Pre-create checkmark attachment
+  const blob = await createCheckmarkIcon()
+  const file = new File([blob], 'checkmark.png', { type: 'image/png' })
+  checkmarkAttachmentId = await inst.createAttachment(file)
 
-    const inst = await sdk.load({
-      container: containerEl.value,
-      document: buffer,
-      baseUrl,
-      licenseKey,
-    })
-    instance.value = inst
+  // Listen for annotation selection changes
+  inst.addEventListener('annotationSelection.change', (annotations: any) => {
+    if (!annotations || annotations.size === 0) {
+      selectedSnippetLabel.value = null
+      selectedSnippetCode.value = null
+      return
+    }
 
-    // Pre-create checkmark attachment
-    const blob = await createCheckmarkIcon()
-    const file = new File([blob], 'checkmark.png', { type: 'image/png' })
-    checkmarkAttachmentId = await inst.createAttachment(file)
+    const ann = annotations.first()
+    // Match to a template
+    const matched = STAMP_TEMPLATES.find((t) => t.match(ann))
+    if (matched) {
+      selectedSnippetLabel.value = matched.label
+      selectedSnippetCode.value = matched.snippet
+    } else {
+      selectedSnippetLabel.value = ann.stampType === 'Custom' ? 'Custom Stamp' : (ann.stampType ?? 'Stamp')
+      selectedSnippetCode.value = JSON.stringify(ann.toJSON?.() ?? ann, null, 2)
+    }
+  })
 
-    // Listen for annotation selection changes
-    selectionSub = inst.addEventListener('annotationSelection.change', (annotations: any) => {
-      if (!annotations || annotations.size === 0) {
-        selectedSnippetLabel.value = null
-        selectedSnippetCode.value = null
-        return
-      }
-
-      const ann = annotations.first()
-      // Match to a template
-      const matched = STAMP_TEMPLATES.find((t) => t.match(ann))
-      if (matched) {
-        selectedSnippetLabel.value = matched.label
-        selectedSnippetCode.value = matched.snippet
-      } else {
-        selectedSnippetLabel.value = ann.stampType === 'Custom' ? 'Custom Stamp' : (ann.stampType ?? 'Stamp')
-        selectedSnippetCode.value = JSON.stringify(ann.toJSON?.() ?? ann, null, 2)
-      }
-    })
-  } finally {
-    isLoading.value = false
-  }
+  showStatus('Document loaded successfully')
 }
 
 async function uploadDocument(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  await loadDocument(await file.arrayBuffer())
-}
 
-async function loadSamplePdf() {
-  const resp = await fetch('/documents/sample.pdf')
-  await loadDocument(await resp.arrayBuffer())
-}
+  const formData = new FormData()
+  formData.append('file', file)
 
-function clearDocument() {
-  selectionSub?.()
-  selectionSub = null
-  if (containerEl.value && SDK.value) {
-    try { SDK.value.unload(containerEl.value) } catch { /* ignore */ }
+  try {
+    const res = await fetch('/api/documents', { method: 'POST', body: formData })
+    const data = await res.json()
+    if (data.documentId) {
+      documentId.value = data.documentId
+      showStatus(`Uploaded: ${file.name}`)
+    }
+  } catch (err) {
+    showStatus(`Upload failed: ${err}`)
   }
+}
+
+function resetDocument() {
+  documentId.value = ''
   instance.value = null
   SDK.value = null
   stampsPlaced.value = false
@@ -415,7 +417,7 @@ async function addAllStamps() {
   const col2 = 310
   let y = 20
 
-  const stamps = []
+  const stamps: AnnotationsUnion[] = []
   for (const template of STAMP_TEMPLATES) {
     const x = stamps.length % 2 === 0 ? col1 : col2
     if (stamps.length % 2 === 0 && stamps.length > 0) y += 140
@@ -444,20 +446,18 @@ async function addAllStamps() {
     <aside class="sidebar">
       <h2 class="sidebar-title">Rich Stamp Annotations</h2>
       <p class="sidebar-hint">
-        Multiline text, custom fonts, embedded images, and image positioning
-        — all rendered by Core into a single appearance stream.
+        Document Engine mode — multiline text, custom fonts, embedded images,
+        and image positioning. Annotations persist via Instant sync.
       </p>
 
       <label class="upload-btn">
-        Upload PDF
-        <input type="file" accept=".pdf" hidden @change="uploadDocument">
+        Upload Document (PDF/DOCX)
+        <input type="file" accept=".pdf,.docx,.xlsx,.pptx" hidden @change="uploadDocument">
       </label>
 
-      <button class="action-btn" @click="loadSamplePdf">
-        Load Sample PDF
-      </button>
+      <div v-if="statusMessage" class="status-message">{{ statusMessage }}</div>
 
-      <button v-if="instance" class="action-btn clear-btn" @click="clearDocument">
+      <button v-if="instance" class="action-btn clear-btn" @click="resetDocument">
         Clear
       </button>
 
@@ -474,13 +474,15 @@ async function addAllStamps() {
 
     <div class="main-area">
       <div class="viewer-area">
-        <div v-if="!instance && !isLoading" class="viewer-placeholder">
-          <p>Upload a PDF or load a sample to get started</p>
+        <div v-if="!documentId" class="viewer-placeholder">
+          <p>Upload a document to get started</p>
+          <p class="viewer-hint">Use the sidebar to upload a PDF or DOCX file</p>
         </div>
-        <div v-if="isLoading" class="viewer-placeholder">
-          <p>Loading...</p>
-        </div>
-        <div ref="containerEl" class="viewer-container" />
+        <DocumentViewer
+          v-if="documentId"
+          :document-id="documentId"
+          @loaded="onViewerLoaded"
+        />
       </div>
 
       <transition name="slide">
@@ -529,6 +531,21 @@ async function addAllStamps() {
 .select-hint {
   color: #1976D2;
   font-weight: 500;
+}
+
+.status-message {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
+}
+
+.viewer-hint {
+  font-size: 13px;
+  margin-top: 4px;
+  color: #bbb;
 }
 
 .upload-btn {
@@ -616,6 +633,7 @@ async function addAllStamps() {
 
 .viewer-placeholder {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
