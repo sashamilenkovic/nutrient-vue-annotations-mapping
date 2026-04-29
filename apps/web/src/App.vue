@@ -39,6 +39,12 @@ const route = useRoute()
         >
           Rich Stamps
         </RouterLink>
+        <RouterLink
+          to="/ephemeral-highlights"
+          :class="{ active: route.name === 'ephemeral-highlights' }"
+        >
+          Ephemeral Highlights
+        </RouterLink>
       </nav>
     </header>
     <main class="main-content">

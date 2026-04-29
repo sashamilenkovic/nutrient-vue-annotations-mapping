@@ -4,6 +4,7 @@ import TextComparisonPage from '@/pages/TextComparisonPage.vue'
 import CrossPageComparisonPage from '@/pages/CrossPageComparisonPage.vue'
 import AdvancedComparisonPage from '@/pages/AdvancedComparisonPage.vue'
 import RichStampPage from '@/pages/RichStampPage.vue'
+import EphemeralHighlightsPage from '@/pages/EphemeralHighlightsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,6 +33,11 @@ const router = createRouter({
       path: '/rich-stamps',
       name: 'rich-stamps',
       component: RichStampPage,
+    },
+    {
+      path: '/ephemeral-highlights',
+      name: 'ephemeral-highlights',
+      component: EphemeralHighlightsPage,
     },
   ],
 })
