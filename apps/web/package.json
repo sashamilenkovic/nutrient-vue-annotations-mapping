@@ -15,7 +15,7 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
-    "@nutrient-sdk/viewer": "1.14.0",
+    "@nutrient-sdk/viewer": "1.15.0-nightly.20260507",
     "@types/node": "^24.11.0",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/tsconfig": "^0.8.1",

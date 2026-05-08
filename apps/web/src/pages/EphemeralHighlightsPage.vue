@@ -1,55 +1,87 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import type { Instance, SearchResult, Rect } from '@nutrient-sdk/viewer'
 import { getNutrientViewer } from '@/nutrient'
 import DocumentViewer from '@/components/DocumentViewer.vue'
-import AnnotationDemo from '@/components/AnnotationDemo.vue'
 
-const route = useRoute()
-const router = useRouter()
+// Side-by-side testbed for the default smart-search path vs the new opt-in
+// `SearchType.WORD_BASED` mode (CORE-1101). Word-based strips Unicode space
+// variants plus tab/newline/CR from query and page text and substring-matches
+// with punctuation preserved — designed to handle long multi-line phrases that
+// cross structural boundaries (tables, columns, page wraps) which the regex-
+// based default cannot bridge.
+
+type SearchMode = 'default' | 'word_based'
 
 const instance = ref<Instance | null>(null)
-const documentId = ref<string>((route.query.documentId as string) || '')
+const documentId = ref<string>('')
 const statusMessage = ref<string>('')
-const isAutoLoading = ref(false)
+const isUploading = ref(false)
+const searchMode = ref<SearchMode>('default')
 
-const DEFAULT_DOC_PATH = '/documents/LeaseContract.pdf'
-const DEFAULT_DOC_FILENAME = 'LeaseContract.pdf'
-const CACHE_KEY = 'ephemeral-highlights-doc-id-v1'
+// Hardcoded phrase set. Each entry is one search query — they may span multiple
+// lines (paste from source verbatim, including line breaks and punctuation).
+const PHRASES: string[] = [
+  '● High power output of 180 watts into 8 ohms / 260 watts into 4 ohms ●',
+  'Rated Output\n(20 to 20,000 Hz, 0.05%) Both channels driven 4-ohm load * 260 W / ch\n8-ohm load 180 W / ch',
+  'The rear panel expansion slots allow use\nof three types of option boards (DAC-60,\nAD-50, LINE-10). Up to two boards can\nbe installed, according to requirements.',
+  `DAC-50 / DAC-40 /
+DAC-30 / DAC-20 /
+DAC-10
+AD-30 / AD-20 /
+AD-10 / AD-9
+LINE-9
+Digital Input
+Board
+Analog Record
+Input Board
+Line Input
+Board
+■ The following option
+boards can also be used:
+The rear panel expansion slots allow use
+of three types of option boards (DAC-60,
+AD-50, LINE-10). Up to two boards can
+be installed, according to requirements.
+Input
+32 to 384 kHz
+32 to 96 kHz
+32 to 192 kHz
+USB
+OPTICAL
+COAXIAL
+Signal
+DSD
+PCM
+PCM
+PCM
+Number of bits
+1-bit
+32-bit
+24-bit
+24-bit
+Sampling frequencies
+2.8 MHz
+5.6 MHz
+11.2 MHz
+11.2 MHz:
+ASIO only`,
+]
 
-type HighlightSource = 'fts' | 'ai' | 'invoice'
-
-const SOURCE_CONFIG: Record<HighlightSource, { label: string; color: string; phrases: string[] }> = {
-  fts: {
-    label: 'FTS Search Hits',
-    color: 'rgba(255, 235, 59, 0.45)',
-    phrases: ['Lease Agreement', 'Equipment', 'Lessor', 'Lessee'],
-  },
-  ai: {
-    // Multi-line phrases — these wrap across line breaks in the PDF.
-    // instance.search() handles line breaks transparently, returning one rect per line.
-    label: 'AI Citations (multi-line)',
-    color: 'rgba(33, 150, 243, 0.35)',
-    phrases: [
-      'Nextverse Inc., having its principal place of business at',
-      'Highfly Corp., having its principal place of business at',
-      'thirty (30) days written notice',
-    ],
-  },
-  invoice: {
-    label: 'Invoice Fields',
-    color: 'rgba(76, 175, 80, 0.4)',
-    phrases: ['$5,000 USD', 'June 12, 2025', 'July 1, 2025', 'XR-900', 'Authorized Signatory'],
-  },
-}
-
-const overlayIdsBySource = new Map<HighlightSource, string[]>()
-const counts = ref<Record<HighlightSource, number>>({ fts: 0, ai: 0, invoice: 0 })
-
-watch(documentId, (id) => {
-  router.replace({ query: id ? { documentId: id } : {} })
+// Match counts cached per phrase per mode. Populated by `runAndRender`; mode
+// toggle reads `counts.value[mode]` for the visible match counts.
+type Counts = number[]
+const counts = ref<Record<SearchMode, Counts>>({
+  default: PHRASES.map(() => 0),
+  word_based: PHRASES.map(() => 0),
 })
+
+// Yellow rect with mixBlendMode: multiply + opacity 0.4 reads like a
+// highlighter pen rather than an opaque overlay.
+const HIGHLIGHT_BG = '#ded701ff'
+const HIGHLIGHT_OPACITY = '0.4'
+
+const overlayIds: string[] = []
 
 function showStatus(msg: string) {
   statusMessage.value = msg
@@ -75,77 +107,43 @@ async function uploadDocument(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
+  isUploading.value = true
   try {
     const id = await uploadFile(file)
     if (id) {
       documentId.value = id
-      localStorage.setItem(CACHE_KEY, id)
       showStatus(`Uploaded: ${file.name}`)
     }
   } catch (err) {
     showStatus(`Upload failed: ${err instanceof Error ? err.message : String(err)}`)
-  }
-}
-
-async function autoLoadDefaultDocument() {
-  if (documentId.value) return
-
-  const cached = localStorage.getItem(CACHE_KEY)
-  if (cached) {
-    documentId.value = cached
-    return
-  }
-
-  isAutoLoading.value = true
-  try {
-    const res = await fetch(DEFAULT_DOC_PATH)
-    if (!res.ok) throw new Error(`Could not fetch ${DEFAULT_DOC_PATH} (${res.status})`)
-    const blob = await res.blob()
-    const file = new File([blob], DEFAULT_DOC_FILENAME, { type: 'application/pdf' })
-    const id = await uploadFile(file)
-    if (id) {
-      documentId.value = id
-      localStorage.setItem(CACHE_KEY, id)
-      showStatus(`Loaded default document: ${DEFAULT_DOC_FILENAME}`)
-    }
-  } catch (err) {
-    showStatus(`Auto-load failed — upload manually. (${err instanceof Error ? err.message : String(err)})`)
   } finally {
-    isAutoLoading.value = false
+    isUploading.value = false
+    input.value = ''
   }
-}
-
-function resetDefaultDocument() {
-  localStorage.removeItem(CACHE_KEY)
-  documentId.value = ''
-  autoLoadDefaultDocument()
 }
 
 function onViewerLoaded(inst: Instance) {
   instance.value = inst
-  showStatus('Document loaded — try the highlight buttons in the sidebar')
+  // Auto-run in the currently-selected mode so the user sees results
+  // immediately on document load.
+  void runAndRender()
 }
 
-function buildHighlightNode(color: string, rect: Rect): HTMLDivElement {
+function buildHighlightNode(rect: Rect): HTMLDivElement {
   const node = document.createElement('div')
   node.style.width = `${rect.width}px`
   node.style.height = `${rect.height}px`
-  node.style.background = color
-  node.style.borderRadius = '2px'
-  node.style.pointerEvents = 'none'
-  // Match the SDK's native search-highlight look — multiplies the color into the
-  // page underneath so it reads like ink/marker rather than an opaque overlay.
+  node.style.backgroundColor = HIGHLIGHT_BG
+  node.style.opacity = HIGHLIGHT_OPACITY
   node.style.mixBlendMode = 'multiply'
+  // pointer-events: none so PDF text underneath stays selectable.
+  node.style.pointerEvents = 'none'
   return node
 }
 
-// CustomOverlayItem wraps our node in two SDK divs (a transform wrapper and a host
-// element), both of which default to pointer-events: auto and sit above the PDF
-// text layer. Setting pointer-events: none on our inner div alone isn't enough —
-// the wrappers still capture mousedown/selectionchange and the SDK's selection-
-// prevention handler fires when the selection's anchor is inside the host. We walk
-// up the chain after mount and disable pointer-events on both wrappers so selection
-// drops through to the text layer underneath.
+// CustomOverlayItem wraps our node in two SDK divs that default to
+// pointer-events: auto. Walk up two levels and disable both so text selection
+// drops through to the PDF text layer.
 function disableWrapperPointerEvents(node: HTMLElement) {
   let el: HTMLElement | null = node.parentElement
   let depth = 0
@@ -156,30 +154,38 @@ function disableWrapperPointerEvents(node: HTMLElement) {
   }
 }
 
-async function highlight(source: HighlightSource) {
+async function clearOverlays() {
   const inst = instance.value
-  if (!inst) {
-    showStatus('Load a document first')
-    return
+  if (!inst) return
+  for (const id of overlayIds) {
+    inst.removeCustomOverlayItem(id)
   }
+  overlayIds.length = 0
+}
 
-  await clear(source)
+async function runAndRender() {
+  const inst = instance.value
+  if (!inst) return
 
   const SDK = await getNutrientViewer()
-  const { color, phrases } = SOURCE_CONFIG[source]
-  const ids: string[] = []
+  await clearOverlays()
 
-  for (const phrase of phrases) {
-    const results: ReturnType<Instance['search']> extends Promise<infer R> ? R : never =
-      await inst.search(phrase, { searchType: SDK.SearchType.TEXT })
+  const searchType =
+    searchMode.value === 'word_based' ? SDK.SearchType.WORD_BASED : SDK.SearchType.TEXT
+
+  const newCounts: Counts = []
+  for (let phraseIdx = 0; phraseIdx < PHRASES.length; phraseIdx++) {
+    // Loop bound guarantees the index is valid; satisfy `noUncheckedIndexedAccess`.
+    const phrase = PHRASES[phraseIdx]!
+    const results = await inst.search(phrase, { searchType })
+    newCounts.push(results.size)
 
     results.forEach((result: SearchResult, resultIdx: number) => {
       const pageIndex = result.pageIndex
       if (pageIndex == null) return
-
       result.rectsOnPage.forEach((rect: Rect, rectIdx: number) => {
-        const id = `ephemeral-${source}-${phrase}-${resultIdx}-${rectIdx}`
-        const node = buildHighlightNode(color, rect)
+        const id = `wbsearch-${searchMode.value}-${phraseIdx}-${resultIdx}-${rectIdx}`
+        const node = buildHighlightNode(rect)
         const item = new SDK.CustomOverlayItem({
           id,
           pageIndex,
@@ -188,160 +194,110 @@ async function highlight(source: HighlightSource) {
           onAppear: () => disableWrapperPointerEvents(node),
         })
         inst.setCustomOverlayItem(item)
-        ids.push(id)
+        overlayIds.push(id)
       })
     })
   }
 
-  overlayIdsBySource.set(source, ids)
-  counts.value = { ...counts.value, [source]: ids.length }
-  showStatus(`Added ${ids.length} ${SOURCE_CONFIG[source].label} highlights`)
+  counts.value = { ...counts.value, [searchMode.value]: newCounts }
 }
 
-async function clear(source: HighlightSource) {
-  const inst = instance.value
-  if (!inst) return
-
-  const ids = overlayIdsBySource.get(source) ?? []
-  for (const id of ids) {
-    inst.removeCustomOverlayItem(id)
-  }
-  overlayIdsBySource.set(source, [])
-  counts.value = { ...counts.value, [source]: 0 }
-}
-
-async function clearAll() {
-  for (const source of Object.keys(SOURCE_CONFIG) as HighlightSource[]) {
-    await clear(source)
-  }
-  showStatus('Cleared all ephemeral highlights')
-}
-
-onMounted(() => {
-  autoLoadDefaultDocument()
+// Re-run on mode change so highlights swap to the new mode's matches.
+watch(searchMode, () => {
+  void runAndRender()
 })
 
 onBeforeUnmount(() => {
-  // Overlays are cleaned up automatically when the viewer unloads,
-  // but reset the map so a remount starts clean.
-  overlayIdsBySource.clear()
+  overlayIds.length = 0
 })
+
+const totalForMode = (mode: SearchMode) =>
+  counts.value[mode].reduce((acc, n) => acc + n, 0)
 </script>
 
 <template>
   <div class="page-layout">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>Non-Persistent Highlights</h2>
+        <h2>Word-Based Search Comparison</h2>
         <p class="sidebar-subtitle">
-          Overlay ephemeral highlights from external sources (FTS, AI, invoice extractor) without ever
-          touching Document Engine. User annotations + search continue to work normally.
+          Compare default smart-search against the opt-in
+          <code>SearchType.WORD_BASED</code> (CORE-1101). Upload a PDF, toggle
+          the mode, and watch which phrases match.
         </p>
       </div>
 
       <div class="sidebar-controls">
         <label class="upload-btn">
-          Upload Different Document
+          {{ documentId ? 'Upload Different Document' : 'Upload PDF' }}
           <input type="file" accept=".pdf,.docx" hidden @change="uploadDocument">
         </label>
-        <button class="btn btn-small reset-btn" title="Discard cached document and re-upload LeaseContract.pdf" @click="resetDefaultDocument">
-          Reset
-        </button>
+      </div>
+
+      <div class="mode-controls">
+        <span class="mode-label">Search mode:</span>
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            :class="{ active: searchMode === 'default' }"
+            title="Default smart-search (regex with line-wrap tolerance)"
+            @click="searchMode = 'default'"
+          >
+            Default
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: searchMode === 'word_based' }"
+            title="Word-based: strips whitespace, substring-matches with punctuation preserved"
+            @click="searchMode = 'word_based'"
+          >
+            Word-based
+          </button>
+        </div>
       </div>
 
       <div v-if="statusMessage" class="status-message">{{ statusMessage }}</div>
 
-      <div class="demos-list">
-        <AnnotationDemo
-          title="Approach 1: setCustomOverlayItem (recommended)"
-          description="Search returns rects, we drop a colored div on each rect via CustomOverlayItem. Independent of annotations and searchState. Multi-color via inline styles. The three sections below (FTS / AI / Invoice) all use this same approach with different colors."
+      <div class="phrases-list">
+        <div class="phrases-header">
+          <span class="phrases-title">Phrases</span>
+          <span class="phrases-meta">
+            Total: <strong>{{ totalForMode(searchMode) }}</strong> match{{ totalForMode(searchMode) === 1 ? '' : 'es' }}
+          </span>
+        </div>
+
+        <div
+          v-for="(phrase, i) in PHRASES"
+          :key="i"
+          class="phrase-card"
         >
-          <pre class="code-snippet"><code>const results = await instance.search(phrase)
-
-results.forEach(r =&gt; {
-  r.rectsOnPage.forEach(rect =&gt; {
-    const node = document.createElement('div')
-    node.style.background = color
-    node.style.mixBlendMode = 'multiply'
-    node.style.pointerEvents = 'none'
-
-    instance.setCustomOverlayItem(
-      new SDK.CustomOverlayItem({
-        id, pageIndex: r.pageIndex,
-        position: { x: rect.left, y: rect.top },
-        node,
-        onAppear: () =&gt; {
-          // walk up 2 wrappers, set pointer-events: none
-          // so selection passes through to PDF text
-        },
-      })
-    )
-  })
-})</code></pre>
-        </AnnotationDemo>
-
-        <AnnotationDemo
-          title="1. FTS Search Hits"
-          description="Simulates highlighting matches from a full-text search backend. Yellow overlays sit on top of the rendered page; nothing is sent to Document Engine."
-        >
-          <div class="phrase-list">
-            <span v-for="p in SOURCE_CONFIG.fts.phrases" :key="p" class="phrase-chip fts">{{ p }}</span>
+          <div class="phrase-index">Phrase {{ i + 1 }}</div>
+          <pre class="phrase-text">{{ phrase }}</pre>
+          <div class="phrase-counts">
+            <span
+              class="count-pill"
+              :class="{ active: searchMode === 'default', zero: counts.default[i] === 0 }"
+            >
+              Default: {{ counts.default[i] }}
+            </span>
+            <span
+              class="count-pill word"
+              :class="{ active: searchMode === 'word_based', zero: counts.word_based[i] === 0 }"
+            >
+              Word-based: {{ counts.word_based[i] }}
+            </span>
           </div>
-          <div class="btn-row">
-            <button class="btn" @click="highlight('fts')">Highlight ({{ counts.fts }})</button>
-            <button class="btn" @click="clear('fts')">Clear</button>
-          </div>
-        </AnnotationDemo>
-
-        <AnnotationDemo
-          title="2. AI Citations"
-          description="Simulates highlighting passages an AI assistant cited as evidence. Blue overlays — different color per source is trivial because each overlay is just a styled DOM node."
-        >
-          <div class="phrase-list">
-            <span v-for="p in SOURCE_CONFIG.ai.phrases" :key="p" class="phrase-chip ai">{{ p }}</span>
-          </div>
-          <div class="btn-row">
-            <button class="btn" @click="highlight('ai')">Highlight ({{ counts.ai }})</button>
-            <button class="btn" @click="clear('ai')">Clear</button>
-          </div>
-        </AnnotationDemo>
-
-        <AnnotationDemo
-          title="3. Invoice Field Extractions"
-          description="Simulates highlighting fields located by an invoice preprocessor. Green overlays. Combine multiple sources at once — they coexist freely."
-        >
-          <div class="phrase-list">
-            <span v-for="p in SOURCE_CONFIG.invoice.phrases" :key="p" class="phrase-chip invoice">{{ p }}</span>
-          </div>
-          <div class="btn-row">
-            <button class="btn" @click="highlight('invoice')">Highlight ({{ counts.invoice }})</button>
-            <button class="btn" @click="clear('invoice')">Clear</button>
-          </div>
-        </AnnotationDemo>
-
-        <AnnotationDemo
-          title="Proof points"
-          description="Verify the pattern doesn't break anything else in the viewer."
-        >
-          <ul class="proof-list">
-            <li>Open the search bar (Ctrl/Cmd+F) — highlights persist while you search.</li>
-            <li>Draw a rectangle / sticky note — saves to Document Engine normally.</li>
-            <li>Select PDF text under a highlight and Ctrl/Cmd+C — copy works.</li>
-            <li>Reload the page — ephemerals disappear (proves nothing was persisted).</li>
-          </ul>
-          <button class="btn btn-danger" @click="clearAll">Clear all highlights</button>
-        </AnnotationDemo>
+        </div>
       </div>
     </aside>
 
     <div class="viewer-area">
-      <div v-if="!documentId && isAutoLoading" class="viewer-placeholder">
-        <p>Loading default document…</p>
-        <p class="hint">{{ DEFAULT_DOC_FILENAME }}</p>
+      <div v-if="!documentId && isUploading" class="viewer-placeholder">
+        <p>Uploading…</p>
       </div>
       <div v-else-if="!documentId" class="viewer-placeholder">
         <p>No document loaded</p>
-        <p class="hint">Upload one from the sidebar, or hit Reset to retry the default</p>
+        <p class="hint">Upload a PDF from the sidebar to begin</p>
       </div>
       <DocumentViewer
         v-if="documentId"
@@ -359,7 +315,7 @@ results.forEach(r =&gt; {
 }
 
 .sidebar {
-  width: 380px;
+  width: 420px;
   flex-shrink: 0;
   border-right: 1px solid #e0e0e0;
   overflow-y: auto;
@@ -384,18 +340,24 @@ results.forEach(r =&gt; {
   line-height: 1.5;
 }
 
+.sidebar-subtitle code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f0f0f0;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
 .sidebar-controls {
-  display: flex;
-  gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid #e0e0e0;
 }
 
 .upload-btn {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   padding: 8px;
   font-size: 12px;
   border: 1px dashed #aaa;
@@ -410,6 +372,51 @@ results.forEach(r =&gt; {
   color: #333;
 }
 
+.mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+
+.mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  border: none;
+  padding: 5px 12px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  color: #1f2328;
+  transition: all 0.15s;
+}
+
+.mode-btn:hover:not(.active) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.mode-btn.active {
+  background: #1565c0;
+  color: #fff;
+  font-weight: 600;
+}
+
 .status-message {
   padding: 8px 16px;
   font-size: 12px;
@@ -418,109 +425,92 @@ results.forEach(r =&gt; {
   border-bottom: 1px solid #bbdefb;
 }
 
-.demos-list {
+.phrases-list {
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
-.btn {
-  padding: 7px 14px;
-  font-size: 12px;
-  border: 1px solid #ccc;
+.phrases-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.phrases-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #656d76;
+}
+
+.phrases-meta {
+  font-size: 11px;
+  color: #656d76;
+}
+
+.phrase-card {
+  border: 1px solid #eaeef2;
+  background: #f6f8fa;
   border-radius: 6px;
+  padding: 10px;
+}
+
+.phrase-index {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2328;
+  margin-bottom: 6px;
+}
+
+.phrase-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #444;
   background: #fff;
-  cursor: pointer;
-  transition: all 0.15s;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.btn:hover {
-  background: #f5f5f5;
-  border-color: #999;
-}
-
-.btn-row {
+.phrase-counts {
   display: flex;
   gap: 6px;
-}
-
-.btn-small {
-  padding: 6px 10px;
-  font-size: 11px;
-}
-
-.reset-btn {
-  flex-shrink: 0;
-}
-
-.btn-danger {
-  width: 100%;
-  margin-top: 8px;
-  color: #c62828;
-  border-color: #e57373;
-}
-
-.btn-danger:hover {
-  background: #ffebee;
-  border-color: #c62828;
-}
-
-.phrase-list {
-  display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 8px;
 }
 
-.phrase-chip {
+.count-pill {
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(21, 101, 192, 0.1);
+  color: #1565c0;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
 }
 
-.phrase-chip.fts {
-  background: rgba(255, 235, 59, 0.45);
-  color: #6b5800;
+.count-pill.word {
+  background: rgba(46, 125, 50, 0.1);
+  color: #2e7d32;
 }
 
-.phrase-chip.ai {
-  background: rgba(33, 150, 243, 0.25);
-  color: #0d47a1;
+.count-pill.zero {
+  background: rgba(0, 0, 0, 0.06);
+  color: #888;
+  font-weight: 400;
 }
 
-.phrase-chip.invoice {
-  background: rgba(76, 175, 80, 0.3);
-  color: #1b5e20;
-}
-
-.code-snippet {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
-  line-height: 1.5;
-  background: #1e1e2e;
-  color: #cdd6f4;
-  padding: 10px 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 8px 0;
-  white-space: pre;
-}
-
-.code-snippet code {
-  font-family: inherit;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-.proof-list {
-  font-size: 12px;
-  color: #555;
-  line-height: 1.6;
-  padding-left: 18px;
-  margin: 0;
+.count-pill.active {
+  border-color: currentColor;
 }
 
 .viewer-area {
