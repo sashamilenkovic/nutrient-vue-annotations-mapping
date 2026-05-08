@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { Instance, SearchResult, Rect } from '@nutrient-sdk/viewer'
 import { getNutrientViewer } from '@/nutrient'
 import DocumentViewer from '@/components/DocumentViewer.vue'
@@ -13,19 +14,49 @@ import DocumentViewer from '@/components/DocumentViewer.vue'
 
 type SearchMode = 'default' | 'word_based'
 
+const route = useRoute()
+const router = useRouter()
+
 const instance = ref<Instance | null>(null)
-const documentId = ref<string>('')
+// Seed from `?documentId=` so a previously-uploaded doc can be shared via URL,
+// matching the convention used by the other DE-mode pages.
+const documentId = ref<string>((route.query.documentId as string) || '')
 const statusMessage = ref<string>('')
 const isUploading = ref(false)
 const searchMode = ref<SearchMode>('default')
 
-// Hardcoded phrase set. Each entry is one search query — they may span multiple
-// lines (paste from source verbatim, including line breaks and punctuation).
-const PHRASES: string[] = [
-  '● High power output of 180 watts into 8 ohms / 260 watts into 4 ohms ●',
-  'Rated Output\n(20 to 20,000 Hz, 0.05%) Both channels driven 4-ohm load * 260 W / ch\n8-ohm load 180 W / ch',
-  'The rear panel expansion slots allow use\nof three types of option boards (DAC-60,\nAD-50, LINE-10). Up to two boards can\nbe installed, according to requirements.',
-  `DAC-50 / DAC-40 /
+// Keep the URL in sync so reloads / shared links land on the same doc.
+watch(documentId, (id) => {
+  router.replace({ query: id ? { documentId: id } : {} })
+})
+
+// Phrase sets per reference document. Phrases come verbatim from the
+// `Highlights.txt` shipped with each PDF — multi-line where appropriate.
+// Order and labels are intentionally anonymized; users upload their own doc
+// matching the active preset.
+type PresetKey = 'doc-1' | 'doc-2' | 'doc-3'
+
+const PRESETS: Record<PresetKey, { label: string; phrases: string[] }> = {
+  'doc-1': {
+    label: '1',
+    phrases: [
+      'Nextverse hereby commits to delivering SSO support for HelioCare for the\nNextverse One™ platform by Q3 2026.',
+    ],
+  },
+  'doc-2': {
+    label: '2',
+    phrases: [
+      '■MDS+ D/A-Wandler mit vier parallelen Schaltungen',
+      'bietet der DP-570 eine fast doppelt so hohe Leistung (=√4) bezüglich Klirrfaktor',
+    ],
+  },
+  'doc-3': {
+    label: '3',
+    phrases: [
+      '● High power output of 180 watts into 8 ohms / 260 watts into 4 ohms ●',
+      'Rated Output\n(20 to 20,000 Hz, 0.05%) Both channels driven 4-ohm load * 260 W / ch\n8-ohm load 180 W / ch',
+      'The rear panel expansion slots allow use\nof three types of option boards (DAC-60,\nAD-50, LINE-10). Up to two boards can\nbe installed, according to requirements.',
+      `DAC-50 / DAC-40 /
 DAC-30 / DAC-20 /
 DAC-10
 AD-30 / AD-20 /
@@ -66,14 +97,19 @@ Sampling frequencies
 11.2 MHz
 11.2 MHz:
 ASIO only`,
-]
+    ],
+  },
+}
 
-// Match counts cached per phrase per mode. Populated by `runAndRender`; mode
-// toggle reads `counts.value[mode]` for the visible match counts.
+const activePreset = ref<PresetKey>('doc-1')
+const phrases = computed<string[]>(() => PRESETS[activePreset.value].phrases)
+
+// Match counts cached per phrase per mode. Length tracks the active preset's
+// phrase list — recreated when the preset changes via the watcher below.
 type Counts = number[]
 const counts = ref<Record<SearchMode, Counts>>({
-  default: PHRASES.map(() => 0),
-  word_based: PHRASES.map(() => 0),
+  default: phrases.value.map(() => 0),
+  word_based: phrases.value.map(() => 0),
 })
 
 // Yellow rect with mixBlendMode: multiply + opacity 0.4 reads like a
@@ -156,9 +192,15 @@ function disableWrapperPointerEvents(node: HTMLElement) {
 
 async function clearOverlays() {
   const inst = instance.value
-  if (!inst) return
   for (const id of overlayIds) {
-    inst.removeCustomOverlayItem(id)
+    // Stale IDs can linger across re-uploads (the old instance is destroyed
+    // before this runs, so the IDs no longer exist on the new instance).
+    // Swallow any "unknown overlay" errors and keep going.
+    try {
+      inst?.removeCustomOverlayItem(id)
+    } catch {
+      // ignore
+    }
   }
   overlayIds.length = 0
 }
@@ -173,10 +215,11 @@ async function runAndRender() {
   const searchType =
     searchMode.value === 'word_based' ? SDK.SearchType.WORD_BASED : SDK.SearchType.TEXT
 
+  const list = phrases.value
   const newCounts: Counts = []
-  for (let phraseIdx = 0; phraseIdx < PHRASES.length; phraseIdx++) {
+  for (let phraseIdx = 0; phraseIdx < list.length; phraseIdx++) {
     // Loop bound guarantees the index is valid; satisfy `noUncheckedIndexedAccess`.
-    const phrase = PHRASES[phraseIdx]!
+    const phrase = list[phraseIdx]!
     const results = await inst.search(phrase, { searchType })
     newCounts.push(results.size)
 
@@ -207,6 +250,16 @@ watch(searchMode, () => {
   void runAndRender()
 })
 
+// On preset change, reset cached counts to a fresh zero-array sized for the
+// new phrase list, then re-run the active mode if a doc is loaded.
+watch(activePreset, () => {
+  counts.value = {
+    default: phrases.value.map(() => 0),
+    word_based: phrases.value.map(() => 0),
+  }
+  if (instance.value) void runAndRender()
+})
+
 onBeforeUnmount(() => {
   overlayIds.length = 0
 })
@@ -232,6 +285,15 @@ const totalForMode = (mode: SearchMode) =>
           {{ documentId ? 'Upload Different Document' : 'Upload PDF' }}
           <input type="file" accept=".pdf,.docx" hidden @change="uploadDocument">
         </label>
+      </div>
+
+      <div class="preset-controls">
+        <label for="preset-select" class="preset-label">Reference document:</label>
+        <select id="preset-select" v-model="activePreset" class="preset-select">
+          <option v-for="(preset, key) in PRESETS" :key="key" :value="key">
+            {{ preset.label }}
+          </option>
+        </select>
       </div>
 
       <div class="mode-controls">
@@ -267,8 +329,8 @@ const totalForMode = (mode: SearchMode) =>
         </div>
 
         <div
-          v-for="(phrase, i) in PHRASES"
-          :key="i"
+          v-for="(phrase, i) in phrases"
+          :key="`${activePreset}-${i}`"
           class="phrase-card"
         >
           <div class="phrase-index">Phrase {{ i + 1 }}</div>
@@ -370,6 +432,40 @@ const totalForMode = (mode: SearchMode) =>
 .upload-btn:hover {
   border-color: #666;
   color: #333;
+}
+
+.preset-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.preset-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.preset-select {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2328;
+  cursor: pointer;
+}
+
+.preset-select:focus {
+  outline: none;
+  border-color: #1565c0;
+  box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.15);
 }
 
 .mode-controls {

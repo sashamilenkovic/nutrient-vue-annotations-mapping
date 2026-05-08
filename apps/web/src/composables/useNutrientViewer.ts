@@ -38,17 +38,26 @@ export function useNutrientViewer(
   }
 
   async function load(container: HTMLElement, documentId: string) {
-    if (instance.value) {
-      await unload()
-    }
-
     isLoading.value = true
     error.value = null
     currentDocumentId.value = documentId
 
     try {
-      const jwt = await fetchJWT(documentId)
       const SDK = await getNutrientViewer()
+
+      // Defensively detach anything previously mounted on this container.
+      // Covers (a) re-uploading a different document into the same container,
+      // and (b) hot-reload / state-reset cases where `instance.value` is null
+      // but the SDK is still attached to the DOM. Without this, `SDK.load`
+      // throws "container already there" on the second mount.
+      try {
+        SDK.unload(container)
+      } catch {
+        // Nothing was attached.
+      }
+      instance.value = null
+
+      const jwt = await fetchJWT(documentId)
 
       if (options.beforeLoad) {
         options.beforeLoad(SDK)
@@ -72,7 +81,18 @@ export function useNutrientViewer(
     }
   }
 
-  async function unload() {
+  // Best-effort unload. Callers without a container handle (route changes,
+  // teardown) get the ref cleared; callers with a container should pass it
+  // so the SDK actually detaches from the DOM.
+  async function unload(container?: HTMLElement) {
+    if (container) {
+      try {
+        const SDK = await getNutrientViewer()
+        SDK.unload(container)
+      } catch {
+        // Nothing was attached.
+      }
+    }
     instance.value = null
   }
 
